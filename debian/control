@@ -2,7 +2,7 @@ Source: fss-adsb
 Section: main
 Priority: optional
 Maintainer: Scott Parlane <sjp@canterburyairpatrol.org>
-Build-Depends: debhelper (>= 10), autotools-dev, pkg-config, systemd, fss
+Build-Depends: debhelper (>= 10), autotools-dev, pkg-config, systemd, libfss, libfss-client
 Standards-Version: 4.1.3
 
 Package: fss-adsb
