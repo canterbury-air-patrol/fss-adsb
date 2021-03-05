@@ -2,10 +2,10 @@ Source: fss-adsb
 Section: main
 Priority: optional
 Maintainer: Scott Parlane <sjp@canterburyairpatrol.org>
-Build-Depends: debhelper (>= 10), autotools-dev, pkg-config, systemd, libfss, libfss-client
+Build-Depends: debhelper (>= 10), autotools-dev, pkg-config, systemd, libfss (>=0.4.1), libfss-client (>=0.4.1)
 Standards-Version: 4.1.3
 
 Package: fss-adsb
 Architecture: any
-Depends: libfss, libfss-client
+Depends: libfss (>=0.4.1), libfss-client (>=0.4.1)
 Description: ADS-B integration for FSS

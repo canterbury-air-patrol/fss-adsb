@@ -4,7 +4,7 @@
 
 fss_reporter_client::fss_reporter_client(std::string t_address, uint16_t t_port)
 {
-    auto server = new fss_reporter_server(this, t_address, t_port);
+    auto server = new fss_reporter_server(this, t_address, t_port, false);
     if (server->connected())
     {
         servers.push_back(server);
@@ -31,7 +31,7 @@ fss_reporter_client::reportAircraft(double t_latitude, double t_longitude, uint3
     delete msg;
 }
 
-fss_reporter_server::fss_reporter_server(fss_reporter_client *t_client, const std::string &t_address, uint16_t t_port) : flight_safety_system::client::fss_server(t_client, t_address, t_port)
+fss_reporter_server::fss_reporter_server(fss_reporter_client *t_client, const std::string &t_address, uint16_t t_port, bool t_connect) : flight_safety_system::client::fss_server(t_client, t_address, t_port, t_connect)
 {
 }
 
