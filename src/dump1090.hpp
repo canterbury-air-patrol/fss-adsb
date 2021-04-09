@@ -1,6 +1,6 @@
 #include <string>
 #include <thread>
-#include <stdint.h>
+#include <cstdint>
 
 class Point {
 private:
@@ -8,11 +8,11 @@ private:
     double latitude{0.0};
     double longitude{0.0};
 public:
-    Point() {};
+    Point() = default;
     Point(double lat, double lng) : valid(true), latitude(lat), longitude(lng) {};
-    double getLatitude() { return this->latitude; };
-    double getLongitude() { return this->longitude; };
-    bool getValid() { return this->valid; };
+    auto getLatitude() -> double { return this->latitude; };
+    auto getLongitude() -> double { return this->longitude; };
+    auto getValid() -> bool { return this->valid; };
 };
 
 class ADSBData {
@@ -32,31 +32,31 @@ private:
     uint16_t squawk{0};
     bool squawk_set{false};
 public:
-    ADSBData(uint32_t t_ICAOAddress) : ICAOAddress(t_ICAOAddress) {};
-    uint32_t getICAOAddress() { return this->ICAOAddress; };
-    void setCallsign(std::string t_callsign) { this->callsign = t_callsign; this->callsign_set = true; };
-    std::string getCallsign() { return this->callsign; };
-    bool validCallsign() { return this->callsign_set; };
+    explicit ADSBData(uint32_t t_ICAOAddress) : ICAOAddress(t_ICAOAddress) {};
+    auto getICAOAddress() -> uint32_t { return this->ICAOAddress; };
+    void setCallsign(std::string t_callsign) { this->callsign = std::move(t_callsign); this->callsign_set = true; };
+    auto getCallsign() -> std::string { return this->callsign; };
+    auto validCallsign() -> bool { return this->callsign_set; };
     void setPosition(Point t_pos) { this->pos = t_pos; };
-    Point getPosition() { return this->pos; };
+    auto getPosition() -> Point { return this->pos; };
     void setAltitude(uint32_t t_alt) { this->altitude = t_alt; this->altitude_set = true; };
-    uint32_t getAltitude() { return this->altitude; };
-    bool validAltitude() { return this->altitude_set; };
+    auto getAltitude() -> uint32_t { return this->altitude; };
+    auto validAltitude() -> bool { return this->altitude_set; };
     void setSpeed(uint32_t t_speed) { this->speed = t_speed; this->speed_set = true; };
-    uint32_t getSpeed() { return this->speed; };
-    bool validSpeed() { return this->speed_set; };
+    auto getSpeed() -> uint32_t { return this->speed; };
+    auto validSpeed() -> bool { return this->speed_set; };
     void setHeading(uint16_t t_heading) { this->heading = t_heading; this->heading_set = true; };
-    uint32_t getHeading() { return this->heading; };
-    bool validHeading() { return this->heading_set; };
+    auto getHeading() -> uint32_t { return this->heading; };
+    auto validHeading() -> bool { return this->heading_set; };
     void setVertVel(int16_t t_vert_vel) { this->vert_vel = t_vert_vel; this->vert_vel_set = true; };
-    uint32_t getVertVel() { return this->vert_vel; };
-    bool validVertVel() { return this->vert_vel_set; };
+    auto getVertVel() -> uint32_t { return this->vert_vel; };
+    auto validVertVel() -> bool { return this->vert_vel_set; };
     void setSquawk(uint16_t t_sqawk) { this->squawk = t_sqawk; this->squawk_set = true; };
-    uint16_t getSquawk() { return this->squawk; };
-    bool validSquawk() { return this->squawk_set; };
+    auto getSquawk() -> uint16_t { return this->squawk; };
+    auto validSquawk() -> bool { return this->squawk_set; };
 };
 
-typedef void (*notify_dump1090_adsb_data_cb)(ADSBData cmd);
+using notify_dump1090_adsb_data_cb = void (*)(ADSBData cmd);
 
 class dump1090 {
 private:
@@ -66,9 +66,12 @@ private:
     int fd{0};
     int retry_count{0};
     uint64_t last_tried{0};
-    void processMessage(std::string msg);
+    void processMessage(const std::string &msg);
     notify_dump1090_adsb_data_cb adsb_cb{nullptr};
     void connect_to_dump1090();
+    static constexpr uint64_t retry_delay_start = 1000;
+    static constexpr uint64_t retry_delay_cap = 30000;
+    uint64_t retry_delay{retry_delay_start};
 public:
     dump1090(std::string t_addr, uint16_t t_port);
     void reconnect();

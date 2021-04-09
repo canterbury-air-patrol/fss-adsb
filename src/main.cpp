@@ -1,6 +1,7 @@
 #include <iostream>
 #include <csignal>
 #include <map>
+#include <memory>
 #include <mutex>
 
 #include <unistd.h>
@@ -11,7 +12,7 @@
 #include "aircraft.hpp"
 #include "fss-reporter.hpp"
 
-fss_reporter_client *fss;
+std::shared_ptr<fss_reporter_client> fss;
 
 bool running = true;
 
@@ -20,17 +21,17 @@ void sigIntHandler(__attribute__((unused)) int signum)
     running = false;
 }
 
-std::map<uint32_t, ADSBData *> known_aircraft;
+std::map<uint32_t, std::shared_ptr<ADSBData>> known_aircraft;
 std::mutex known_aircraft_lock;
 
 void handle_adsb_data(ADSBData adsb)
 {
     std::cout << "ADSB Data for "  << std::uppercase << std::hex << adsb.getICAOAddress() << std::endl;
     std::unique_lock<std::mutex> lk(known_aircraft_lock);
-    auto *aircraft = known_aircraft[adsb.getICAOAddress()];
+    auto aircraft = known_aircraft[adsb.getICAOAddress()];
     if (aircraft == nullptr)
     {
-        aircraft = new ADSBData(adsb.getICAOAddress());
+        aircraft = std::make_shared<ADSBData>(adsb.getICAOAddress());
         known_aircraft[adsb.getICAOAddress()] = aircraft;
     }
     /* Update the callsign */
@@ -62,13 +63,22 @@ void handle_adsb_data(ADSBData adsb)
     }
     if (adsb.getPosition().getValid())
     {
+        constexpr uint32_t deg_to_centideg = 100;
+        constexpr double knots_to_cms = 51.444;
+        constexpr double ft_to_cm = 30.48;
+        constexpr uint32_t valid_speed = 8;
+        constexpr uint32_t valid_callsign = 16;
+        constexpr uint32_t valid_squawk = 32;
+        constexpr uint32_t valid_vertvel = 128;
+        constexpr uint32_t source_uat = 32768;
+
         std::cout << "Reporting position" << std::endl;
         fss->reportAircraft(adsb.getPosition().getLongitude(),
             adsb.getPosition().getLatitude(),
             adsb.getAltitude(),
-            aircraft->getHeading() * 100, /* Heading needs to be reported in centi-degrees */
-            aircraft->getSpeed() * 51.444, /* Speed needs to be reported in in cm/s */
-            aircraft->getVertVel() * 30.48, /* Vertical Speed needs to be reported in cm/s */
+            aircraft->getHeading() * deg_to_centideg, /* Heading needs to be reported in centi-degrees */
+            aircraft->getSpeed() * knots_to_cms, /* Speed needs to be reported in in cm/s */
+            aircraft->getVertVel() * ft_to_cm, /* Vertical Speed needs to be reported in cm/s */
             aircraft->getICAOAddress(),
             aircraft->getCallsign(),
             aircraft->getSquawk(), 
@@ -78,13 +88,13 @@ void handle_adsb_data(ADSBData adsb)
             1 |
             (adsb.validAltitude() ? 2 : 0) |
             (aircraft->validHeading() ? 4 : 0 ) |
-            (aircraft->validSpeed() ? 8 : 0) |
-            (aircraft->validCallsign() ? 16 : 0) |
-            (aircraft->validSquawk() ? 32 : 0) |
+            (aircraft->validSpeed() ? valid_speed : 0) |
+            (aircraft->validCallsign() ? valid_callsign : 0) |
+            (aircraft->validSquawk() ? valid_squawk : 0) |
             /* 64 = simulated */
-            (aircraft->validVertVel() ? 128 : 0) |
+            (aircraft->validVertVel() ? valid_vertvel : 0) |
             /* 256 = baro valid */
-            32768 /* source = UAT */,
+            source_uat /* source = UAT */,
             /* Using QNH for altitude */
             0,
             /* Type is probably known */
@@ -93,7 +103,8 @@ void handle_adsb_data(ADSBData adsb)
     }
 }
 
-int main(int argc, char *argv[])
+auto
+main(int argc, char *argv[]) -> int
 {
     if (argc != 5)
     {
@@ -107,7 +118,7 @@ int main(int argc, char *argv[])
     signal (SIGPIPE, SIG_IGN);
 
     /* Connect to FSS Server */
-    fss = new fss_reporter_client(argv[3], atoi(argv[4]));
+    fss = std::make_shared<fss_reporter_client>(argv[3], atoi(argv[4]));
 
     /* Connect to Dump1090 */
     dump1090 dumper = dump1090(argv[1], atoi(argv[2]));
@@ -121,8 +132,6 @@ int main(int argc, char *argv[])
     }
 
     dumper.disconnect();
-
-    delete fss;
 
     return 0;
 }
