@@ -49,7 +49,7 @@ public:
     auto getHeading() -> uint32_t { return this->heading; };
     auto validHeading() -> bool { return this->heading_set; };
     void setVertVel(int16_t t_vert_vel) { this->vert_vel = t_vert_vel; this->vert_vel_set = true; };
-    auto getVertVel() -> uint32_t { return this->vert_vel; };
+    auto getVertVel() -> uint16_t { return this->vert_vel; };
     auto validVertVel() -> bool { return this->vert_vel_set; };
     void setSquawk(uint16_t t_sqawk) { this->squawk = t_sqawk; this->squawk_set = true; };
     auto getSquawk() -> uint16_t { return this->squawk; };

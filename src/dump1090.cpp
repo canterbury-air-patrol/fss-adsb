@@ -14,6 +14,8 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+#include <fss.hpp>
+
 constexpr int buffer_length = 2048;
 
 auto
@@ -27,7 +29,7 @@ convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_storag
         if (inet_pton(AF_INET, addr.c_str(), &ia) == 1)
         {
             family = AF_INET;
-            auto *sa_in = (struct sockaddr_in *)sa;
+            auto sa_in = (struct sockaddr_in *)sa;
             memset(sa_in, 0, sizeof(struct sockaddr_in));
             sa_in->sin_family = AF_INET;
             sa_in->sin_addr = ia;
@@ -40,7 +42,7 @@ convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_storag
         if (inet_pton (AF_INET6, addr.c_str(), &ia) == 1)
         {
             family = AF_INET6;
-            auto *sa_in = (struct sockaddr_in6 *)sa;
+            auto sa_in = (struct sockaddr_in6 *)sa;
             memset(sa_in, 0, sizeof(struct sockaddr_in6));
             sa_in->sin6_family = AF_INET6;
             sa_in->sin6_addr = ia;
@@ -130,7 +132,7 @@ dump1090::processMessage(const std::string &t_msg)
             case sbs1_id_airborne_vel:
                 adsb.setSpeed(std::stoul(data[sbs1_field_groundspeed]));
                 adsb.setHeading(std::stoul(data[sbs1_field_track]));
-                adsb.setVertVel(std::stoul(data[sbs1_field_vertrate]));
+                adsb.setVertVel(std::stoi(data[sbs1_field_vertrate]));
                 break;
             case sbs1_id_surveillence_id:
                 adsb.setSquawk(std::stoul(data[sbs1_field_squawk]));
@@ -216,20 +218,12 @@ dump1090::connect_to_dump1090()
     this->recv_thread = std::thread(recv_adsb_thread, this);
 }
 
-static auto
-current_timestamp() -> uint64_t
-{
-    struct timeval tv = {};
-    gettimeofday(&tv, nullptr);
-    return tv.tv_sec * 1000 + (tv.tv_usec / 1000);
-}
-
 void
 dump1090::reconnect()
 {
     if (this->fd == -1)
     {
-        uint64_t ts = current_timestamp();
+        uint64_t ts = flight_safety_system::fss_current_timestamp();
         uint64_t elapsed_time = ts - this->last_tried;
 
         if (elapsed_time > this->retry_delay)

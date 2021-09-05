@@ -4,6 +4,7 @@
 #include <memory>
 #include <mutex>
 
+#include <string>
 #include <unistd.h>
 
 #include "fss.hpp"
@@ -77,8 +78,8 @@ void handle_adsb_data(ADSBData adsb)
             adsb.getPosition().getLatitude(),
             adsb.getAltitude(),
             aircraft->getHeading() * deg_to_centideg, /* Heading needs to be reported in centi-degrees */
-            aircraft->getSpeed() * knots_to_cms, /* Speed needs to be reported in in cm/s */
-            aircraft->getVertVel() * ft_to_cm, /* Vertical Speed needs to be reported in cm/s */
+            static_cast<uint16_t>(aircraft->getSpeed() * knots_to_cms), /* Speed needs to be reported in in cm/s */
+            static_cast<uint16_t>(aircraft->getVertVel() * ft_to_cm), /* Vertical Speed needs to be reported in cm/s */
             aircraft->getICAOAddress(),
             aircraft->getCallsign(),
             aircraft->getSquawk(), 
@@ -106,7 +107,8 @@ void handle_adsb_data(ADSBData adsb)
 auto
 main(int argc, char *argv[]) -> int
 {
-    if (argc != 5)
+    constexpr int required_args = 5;
+    if (argc != required_args)
     {
         std::cerr << "Usage: " << argv[0] << " dump1090-host dump1090-port fss-host fss-port" << std::endl;
         return -1;
@@ -118,10 +120,10 @@ main(int argc, char *argv[]) -> int
     signal (SIGPIPE, SIG_IGN);
 
     /* Connect to FSS Server */
-    fss = std::make_shared<fss_reporter_client>(argv[3], atoi(argv[4]));
+    fss = std::make_shared<fss_reporter_client>(argv[3], std::stoi(argv[4]));
 
     /* Connect to Dump1090 */
-    dump1090 dumper = dump1090(argv[1], atoi(argv[2]));
+    dump1090 dumper = dump1090(argv[1], std::stoi(argv[2]));
     dumper.registerCB(handle_adsb_data);
 
     while (running)
