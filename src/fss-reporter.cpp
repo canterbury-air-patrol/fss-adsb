@@ -31,5 +31,5 @@ void
 fss_reporter_server::sendIdentify()
 {
     auto ident_msg = std::make_shared<flight_safety_system::transport::fss_message_identity_non_aircraft>();
-    this->conn->sendMsg(ident_msg);
+    this->getConnection()->sendMsg(ident_msg);
 }
