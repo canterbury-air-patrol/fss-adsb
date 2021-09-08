@@ -17,7 +17,7 @@ public:
 
 class fss_reporter_server : public flight_safety_system::client::fss_server {
 public:
-    fss_reporter_server(fss_reporter_client *t_reporter, const std::string &t_address, uint16_t t_port, bool t_connect);
+    fss_reporter_server(fss_reporter_client *t_reporter, const std::string &t_address, uint16_t t_port);
     fss_reporter_server(fss_reporter_server &) = delete;
     fss_reporter_server(fss_reporter_server &&) = delete;
     auto operator=(fss_reporter_server&) -> fss_reporter_server& = delete;
