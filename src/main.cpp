@@ -107,10 +107,10 @@ void handle_adsb_data(ADSBData adsb)
 auto
 main(int argc, char *argv[]) -> int
 {
-    constexpr int required_args = 5;
+    constexpr int required_args = 8;
     if (argc != required_args)
     {
-        std::cerr << "Usage: " << argv[0] << " dump1090-host dump1090-port fss-host fss-port" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " dump1090-host dump1090-port fss-host fss-port ca.public.key private.key public.key" << std::endl;
         return -1;
     }
 
@@ -120,7 +120,7 @@ main(int argc, char *argv[]) -> int
     signal (SIGPIPE, SIG_IGN);
 
     /* Connect to FSS Server */
-    fss = std::make_shared<fss_reporter_client>(argv[3], std::stoi(argv[4]));
+    fss = std::make_shared<fss_reporter_client>(argv[3], std::stoi(argv[4]), argv[5], argv[6], argv[7]);
 
     /* Connect to Dump1090 */
     dump1090 dumper = dump1090(argv[1], std::stoi(argv[2]));

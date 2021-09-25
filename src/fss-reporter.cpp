@@ -2,9 +2,9 @@
 #include "fss-reporter.hpp"
 
 
-fss_reporter_client::fss_reporter_client(const std::string &t_address, uint16_t t_port)
+fss_reporter_client::fss_reporter_client(const std::string &t_address, uint16_t t_port, std::string t_ca, std::string t_private_key, std::string t_public_key)
 {
-    auto server = std::make_shared<fss_reporter_server>(this, t_address, t_port);
+    auto server = std::make_shared<fss_reporter_server>(this, t_address, t_port, t_ca, t_private_key, t_public_key);
     this->addServer(server);
 }
 
@@ -23,7 +23,7 @@ fss_reporter_client::reportAircraft(double t_latitude, double t_longitude, uint3
     this->sendMsgAll(msg);
 }
 
-fss_reporter_server::fss_reporter_server(fss_reporter_client *t_client, const std::string &t_address, uint16_t t_port) : flight_safety_system::client::fss_server(t_client, t_address, t_port)
+fss_reporter_server::fss_reporter_server(fss_reporter_client *t_client, const std::string &t_address, uint16_t t_port, std::string t_ca, std::string t_private_key, std::string t_public_key) : flight_safety_system::client_ssl::fss_server(t_client, t_address, t_port, t_ca, t_private_key, t_public_key)
 {
 }
 
