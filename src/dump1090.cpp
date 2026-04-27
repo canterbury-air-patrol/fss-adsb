@@ -1,6 +1,6 @@
 #include "dump1090.hpp"
 
-#include <bits/stdint-uintn.h>
+#include <cstdint>
 #include <cstring>
 #include <string>
 #include <sstream>
