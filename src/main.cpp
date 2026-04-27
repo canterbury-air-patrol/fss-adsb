@@ -67,6 +67,9 @@ void handle_adsb_data(ADSBData adsb)
         constexpr uint32_t deg_to_centideg = 100;
         constexpr double knots_to_cms = 51.444;
         constexpr double ft_to_cm = 30.48;
+        constexpr uint32_t valid_coords = 1;
+        constexpr uint32_t valid_altitude = 2;
+        constexpr uint32_t valid_heading = 4;
         constexpr uint32_t valid_speed = 8;
         constexpr uint32_t valid_callsign = 16;
         constexpr uint32_t valid_squawk = 32;
@@ -86,9 +89,9 @@ void handle_adsb_data(ADSBData adsb)
             /* Time since last contact (0), we just saw it now */
             0,
             /* Report valid for: coords, (and as known about other fields) */
-            1 |
-            (adsb.validAltitude() ? 2 : 0) |
-            (aircraft->validHeading() ? 4 : 0 ) |
+            valid_coords |
+            (adsb.validAltitude() ? valid_altitude : 0) |
+            (aircraft->validHeading() ? valid_heading : 0 ) |
             (aircraft->validSpeed() ? valid_speed : 0) |
             (aircraft->validCallsign() ? valid_callsign : 0) |
             (aircraft->validSquawk() ? valid_squawk : 0) |
