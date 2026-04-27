@@ -208,6 +208,7 @@ dump1090::connect_to_dump1090()
     {
         perror("Failed to connect");
         std::cout << "Accessing " << this->addr << ":" << this->port << std::endl;
+        close (this->fd);
         this->fd = -1;
         return;
     }
