@@ -27,7 +27,7 @@ std::mutex known_aircraft_lock;
 
 void handle_adsb_data(ADSBData adsb)
 {
-    std::cout << "ADSB Data for "  << std::uppercase << std::hex << adsb.getICAOAddress() << std::endl;
+    std::cout << "ADSB Data for " << std::uppercase << std::hex << adsb.getICAOAddress() << std::endl;
     std::unique_lock<std::mutex> lk(known_aircraft_lock);
     auto aircraft = known_aircraft[adsb.getICAOAddress()];
     if (aircraft == nullptr)
@@ -77,50 +77,43 @@ void handle_adsb_data(ADSBData adsb)
         constexpr uint32_t source_uat = 32768;
 
         std::cout << "Reporting position" << std::endl;
-        fss->reportAircraft(adsb.getPosition().getLongitude(),
-            adsb.getPosition().getLatitude(),
-            adsb.getAltitude(),
+        fss->reportAircraft(
+            adsb.getPosition().getLongitude(), adsb.getPosition().getLatitude(), adsb.getAltitude(),
             aircraft->getHeading() * deg_to_centideg, /* Heading needs to be reported in centi-degrees */
             static_cast<uint16_t>(aircraft->getSpeed() * knots_to_cms), /* Speed needs to be reported in in cm/s */
             static_cast<uint16_t>(aircraft->getVertVel() * ft_to_cm), /* Vertical Speed needs to be reported in cm/s */
-            aircraft->getICAOAddress(),
-            aircraft->getCallsign(),
-            aircraft->getSquawk(), 
+            aircraft->getICAOAddress(), aircraft->getCallsign(), aircraft->getSquawk(),
             /* Time since last contact (0), we just saw it now */
             0,
             /* Report valid for: coords, (and as known about other fields) */
-            valid_coords |
-            (adsb.validAltitude() ? valid_altitude : 0) |
-            (aircraft->validHeading() ? valid_heading : 0 ) |
-            (aircraft->validSpeed() ? valid_speed : 0) |
-            (aircraft->validCallsign() ? valid_callsign : 0) |
-            (aircraft->validSquawk() ? valid_squawk : 0) |
-            /* 64 = simulated */
-            (aircraft->validVertVel() ? valid_vertvel : 0) |
-            /* 256 = baro valid */
-            source_uat /* source = UAT */,
+            valid_coords | (adsb.validAltitude() ? valid_altitude : 0) |
+                (aircraft->validHeading() ? valid_heading : 0) | (aircraft->validSpeed() ? valid_speed : 0) |
+                (aircraft->validCallsign() ? valid_callsign : 0) | (aircraft->validSquawk() ? valid_squawk : 0) |
+                /* 64 = simulated */
+                (aircraft->validVertVel() ? valid_vertvel : 0) |
+                /* 256 = baro valid */
+                source_uat /* source = UAT */,
             /* Using QNH for altitude */
             0,
             /* Type is probably known */
-            0,
-            flight_safety_system::fss_current_timestamp());
+            0, flight_safety_system::fss_current_timestamp());
     }
 }
 
-auto
-main(int argc, char *argv[]) -> int
+auto main(int argc, char *argv[]) -> int
 {
     constexpr int required_args = 8;
     if (argc != required_args)
     {
-        std::cerr << "Usage: " << argv[0] << " dump1090-host dump1090-port fss-host fss-port ca.public.key private.key public.key" << std::endl;
+        std::cerr << "Usage: " << argv[0]
+                  << " dump1090-host dump1090-port fss-host fss-port ca.public.key private.key public.key" << std::endl;
         return -1;
     }
 
     /* Watch out for sigint */
-    signal (SIGINT, sigIntHandler);
+    signal(SIGINT, sigIntHandler);
     /* Ignore SIGPIPE */
-    signal (SIGPIPE, SIG_IGN);
+    signal(SIGPIPE, SIG_IGN);
 
     /* Connect to FSS Server */
     fss = std::make_shared<fss_reporter_client>(argv[3], std::stoi(argv[4]), argv[5], argv[6], argv[7]);
