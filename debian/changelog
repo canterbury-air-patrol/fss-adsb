@@ -1,6 +1,16 @@
+fss-adsb (0.5.2) unstable; urgency=medium
+
+  * debian: modernise packaging style
+    - Switch from debian/compat to debhelper-compat (= 13) in Build-Depends
+    - Update Standards-Version to 4.7.0
+    - Add ${shlibs:Depends}, ${misc:Depends} to binary package Depends
+    - Fix debian/copyright placeholders
+    - Drop bogus dh_auto_configure override
+
+ -- Scott Parlane <sjp@canterburyairpatrol.org>  Sat, 17 May 2026 00:00:00 +0000
+
 fss-adsb (0.5.1) unstable; urgency=medium
 
   * Update
 
- -- unknown <sjp@canterburyairpatrol.org>  Sat, 23 Aug 2025 00:00:00 +0000
-
+ -- Scott Parlane <sjp@canterburyairpatrol.org>  Sat, 23 Aug 2025 00:00:00 +0000
