@@ -1,3 +1,9 @@
+fss-adsb (0.5.3) unstable; urgency=medium
+
+  * debian: require flight-safety-system >= 1.0.0
+
+ -- Scott Parlane <sjp@canterburyairpatrol.org>  Sat, 17 May 2026 00:00:00 +0000
+
 fss-adsb (0.5.2) unstable; urgency=medium
 
   * debian: modernise packaging style
