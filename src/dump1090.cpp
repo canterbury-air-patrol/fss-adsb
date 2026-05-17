@@ -18,8 +18,7 @@
 
 constexpr int buffer_length = 2048;
 
-auto
-convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_storage *sa) -> bool
+auto convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_storage *sa) -> bool
 {
     int family = AF_UNSPEC;
     /* Try converting an IP(v4) address first */
@@ -39,7 +38,7 @@ convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_storag
     if (family == AF_UNSPEC)
     {
         struct in6_addr ia = {};
-        if (inet_pton (AF_INET6, addr.c_str(), &ia) == 1)
+        if (inet_pton(AF_INET6, addr.c_str(), &ia) == 1)
         {
             family = AF_INET6;
             auto sa_in = (struct sockaddr_in6 *)sa;
@@ -52,30 +51,29 @@ convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_storag
     if (family == AF_UNSPEC)
     {
         struct addrinfo *ai = nullptr;
-        
+
         if (getaddrinfo(addr.c_str(), nullptr, nullptr, &ai) == 0)
         {
-            memcpy (sa, ai->ai_addr, ai->ai_addrlen);
+            memcpy(sa, ai->ai_addr, ai->ai_addrlen);
             family = ai->ai_family;
         }
-        
+
         freeaddrinfo(ai);
     }
 
     switch (family)
     {
-        case AF_INET:
-        {
+        case AF_INET: {
             auto *sa_in = (struct sockaddr_in *)sa;
-            sa_in->sin_port = htons (port);
-        } break;
-        case AF_INET6:
-        {
+            sa_in->sin_port = htons(port);
+        }
+        break;
+        case AF_INET6: {
             auto *sa_in = (struct sockaddr_in6 *)sa;
-            sa_in->sin6_port = htons (port);
+            sa_in->sin6_port = htons(port);
         }
     }
-    
+
     return family != AF_UNSPEC;
 }
 
@@ -103,8 +101,7 @@ using sbs1_msgs_ids = enum sbs1_msg_ids_e {
     sbs1_id_all_call_reply = 8,
 };
 
-void
-dump1090::processMessage(const std::string &t_msg)
+void dump1090::processMessage(const std::string &t_msg)
 {
     std::stringstream ss(t_msg);
     std::vector<std::string> data;
@@ -122,11 +119,10 @@ dump1090::processMessage(const std::string &t_msg)
         ADSBData adsb(std::stoul(data[sbs1_field_address], nullptr, sbs1_field_address_base));
         switch (strtol(data[sbs1_field_id].c_str(), nullptr, sbs1_id_base))
         {
-            case sbs1_id_ident:
-                adsb.setCallsign(data[sbs1_field_callsign]);
-                break;
+            case sbs1_id_ident: adsb.setCallsign(data[sbs1_field_callsign]); break;
             case sbs1_id_airborne_pos:
-                adsb.setPosition(Point(std::strtod(data[sbs1_field_lat].c_str(), nullptr), std::strtod(data[sbs1_field_lng].c_str(), nullptr)));
+                adsb.setPosition(Point(std::strtod(data[sbs1_field_lat].c_str(), nullptr),
+                                       std::strtod(data[sbs1_field_lng].c_str(), nullptr)));
                 adsb.setAltitude(std::stoul(data[sbs1_field_altitude]));
                 break;
             case sbs1_id_airborne_vel:
@@ -134,16 +130,15 @@ dump1090::processMessage(const std::string &t_msg)
                 adsb.setHeading(std::stoul(data[sbs1_field_track]));
                 adsb.setVertVel(std::stoi(data[sbs1_field_vertrate]));
                 break;
-            case sbs1_id_surveillence_id:
-                adsb.setSquawk(std::stoul(data[sbs1_field_squawk]));
-                break;
+            case sbs1_id_surveillence_id: adsb.setSquawk(std::stoul(data[sbs1_field_squawk])); break;
             case sbs1_id_surveillence_alt:
             case sbs1_id_air_to_air:
             case sbs1_id_all_call_reply:
                 /* Don't care about these messages */
                 break;
             default:
-                std::cout << "Ignoring message " << data[sbs1_field_id] << " from " << data[sbs1_field_address] << std::endl;
+                std::cout << "Ignoring message " << data[sbs1_field_id] << " from " << data[sbs1_field_address]
+                          << std::endl;
                 return;
         }
         if (this->adsb_cb)
@@ -153,8 +148,7 @@ dump1090::processMessage(const std::string &t_msg)
     }
 }
 
-void
-dump1090::processMessages()
+void dump1090::processMessages()
 {
     while (this->fd != -1)
     {
@@ -182,8 +176,7 @@ dump1090::processMessages()
     }
 }
 
-static void
-recv_adsb_thread(dump1090 *conn)
+static void recv_adsb_thread(dump1090 *conn)
 {
     conn->processMessages();
 }
@@ -193,8 +186,7 @@ dump1090::dump1090(std::string t_addr, uint16_t t_port) : addr(std::move(t_addr)
     this->connect_to_dump1090();
 }
 
-void
-dump1090::connect_to_dump1090()
+void dump1090::connect_to_dump1090()
 {
     struct sockaddr_storage remote = {};
     if (!convert_str_to_sa(this->addr, this->port, &remote))
@@ -204,11 +196,12 @@ dump1090::connect_to_dump1090()
 
     this->fd = socket(remote.ss_family == AF_INET ? PF_INET : PF_INET6, SOCK_STREAM, IPPROTO_TCP);
 
-    if (connect(this->fd, (struct sockaddr *)&remote, remote.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6)) < 0)
+    if (connect(this->fd, (struct sockaddr *)&remote,
+                remote.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6)) < 0)
     {
         perror("Failed to connect");
         std::cout << "Accessing " << this->addr << ":" << this->port << std::endl;
-        close (this->fd);
+        close(this->fd);
         this->fd = -1;
         return;
     }
@@ -219,8 +212,7 @@ dump1090::connect_to_dump1090()
     this->recv_thread = std::thread(recv_adsb_thread, this);
 }
 
-void
-dump1090::reconnect()
+void dump1090::reconnect()
 {
     if (this->fd == -1)
     {
@@ -240,15 +232,14 @@ dump1090::reconnect()
     }
 }
 
-void
-dump1090::disconnect()
+void dump1090::disconnect()
 {
     if (this->fd != -1)
     {
         close(this->fd);
         this->fd = -1;
     }
-    if(this->recv_thread.joinable())
+    if (this->recv_thread.joinable())
     {
         this->recv_thread.join();
     }

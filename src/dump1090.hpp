@@ -34,24 +34,48 @@ private:
 public:
     explicit ADSBData(uint32_t t_ICAOAddress) : ICAOAddress(t_ICAOAddress) {};
     auto getICAOAddress() -> uint32_t { return this->ICAOAddress; };
-    void setCallsign(std::string t_callsign) { this->callsign = std::move(t_callsign); this->callsign_set = true; };
+    void setCallsign(std::string t_callsign)
+    {
+        this->callsign = std::move(t_callsign);
+        this->callsign_set = true;
+    };
     auto getCallsign() -> std::string { return this->callsign; };
     auto validCallsign() -> bool { return this->callsign_set; };
     void setPosition(Point t_pos) { this->pos = t_pos; };
     auto getPosition() -> Point { return this->pos; };
-    void setAltitude(uint32_t t_alt) { this->altitude = t_alt; this->altitude_set = true; };
+    void setAltitude(uint32_t t_alt)
+    {
+        this->altitude = t_alt;
+        this->altitude_set = true;
+    };
     auto getAltitude() -> uint32_t { return this->altitude; };
     auto validAltitude() -> bool { return this->altitude_set; };
-    void setSpeed(uint32_t t_speed) { this->speed = t_speed; this->speed_set = true; };
+    void setSpeed(uint32_t t_speed)
+    {
+        this->speed = t_speed;
+        this->speed_set = true;
+    };
     auto getSpeed() -> uint32_t { return this->speed; };
     auto validSpeed() -> bool { return this->speed_set; };
-    void setHeading(uint16_t t_heading) { this->heading = t_heading; this->heading_set = true; };
+    void setHeading(uint16_t t_heading)
+    {
+        this->heading = t_heading;
+        this->heading_set = true;
+    };
     auto getHeading() -> uint32_t { return this->heading; };
     auto validHeading() -> bool { return this->heading_set; };
-    void setVertVel(int16_t t_vert_vel) { this->vert_vel = t_vert_vel; this->vert_vel_set = true; };
+    void setVertVel(int16_t t_vert_vel)
+    {
+        this->vert_vel = t_vert_vel;
+        this->vert_vel_set = true;
+    };
     auto getVertVel() -> uint16_t { return this->vert_vel; };
     auto validVertVel() -> bool { return this->vert_vel_set; };
-    void setSquawk(uint16_t t_sqawk) { this->squawk = t_sqawk; this->squawk_set = true; };
+    void setSquawk(uint16_t t_sqawk)
+    {
+        this->squawk = t_sqawk;
+        this->squawk_set = true;
+    };
     auto getSquawk() -> uint16_t { return this->squawk; };
     auto validSquawk() -> bool { return this->squawk_set; };
 };
