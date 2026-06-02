@@ -1,6 +1,7 @@
 #include "dump1090.hpp"
 
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <sstream>
@@ -101,6 +102,16 @@ using sbs1_msgs_ids = enum sbs1_msg_ids_e {
     sbs1_id_all_call_reply = 8,
 };
 
+static auto sbs1_to_ul(const std::string &s, int base = 10) -> unsigned long
+{
+    return std::strtoul(s.c_str(), nullptr, base);
+}
+
+static auto sbs1_to_l(const std::string &s) -> long
+{
+    return std::strtol(s.c_str(), nullptr, 10);
+}
+
 void dump1090::processMessage(const std::string &t_msg)
 {
     std::stringstream ss(t_msg);
@@ -114,23 +125,23 @@ void dump1090::processMessage(const std::string &t_msg)
     }
     constexpr uint8_t sbs1_id_base = 10;
     constexpr uint8_t sbs1_field_address_base = 16;
-    if (data[sbs1_field_type] == "MSG")
+    if (data.size() > sbs1_field_squawk && data[sbs1_field_type] == "MSG")
     {
-        ADSBData adsb(std::stoul(data[sbs1_field_address], nullptr, sbs1_field_address_base));
+        ADSBData adsb(sbs1_to_ul(data[sbs1_field_address], sbs1_field_address_base));
         switch (strtol(data[sbs1_field_id].c_str(), nullptr, sbs1_id_base))
         {
             case sbs1_id_ident: adsb.setCallsign(data[sbs1_field_callsign]); break;
             case sbs1_id_airborne_pos:
                 adsb.setPosition(Point(std::strtod(data[sbs1_field_lat].c_str(), nullptr),
                                        std::strtod(data[sbs1_field_lng].c_str(), nullptr)));
-                adsb.setAltitude(std::stoul(data[sbs1_field_altitude]));
+                adsb.setAltitude(sbs1_to_ul(data[sbs1_field_altitude]));
                 break;
             case sbs1_id_airborne_vel:
-                adsb.setSpeed(std::stoul(data[sbs1_field_groundspeed]));
-                adsb.setHeading(std::stoul(data[sbs1_field_track]));
-                adsb.setVertVel(std::stoi(data[sbs1_field_vertrate]));
+                adsb.setSpeed(sbs1_to_ul(data[sbs1_field_groundspeed]));
+                adsb.setHeading(sbs1_to_ul(data[sbs1_field_track]));
+                adsb.setVertVel(sbs1_to_l(data[sbs1_field_vertrate]));
                 break;
-            case sbs1_id_surveillence_id: adsb.setSquawk(std::stoul(data[sbs1_field_squawk])); break;
+            case sbs1_id_surveillence_id: adsb.setSquawk(sbs1_to_ul(data[sbs1_field_squawk])); break;
             case sbs1_id_surveillence_alt:
             case sbs1_id_air_to_air:
             case sbs1_id_all_call_reply:
