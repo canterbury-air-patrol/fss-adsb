@@ -31,6 +31,7 @@ private:
     bool vert_vel_set{false};
     uint16_t squawk{0};
     bool squawk_set{false};
+    uint64_t last_seen{0};
 public:
     explicit ADSBData(uint32_t t_ICAOAddress) : ICAOAddress(t_ICAOAddress) {};
     auto getICAOAddress() -> uint32_t { return this->ICAOAddress; };
@@ -78,6 +79,8 @@ public:
     };
     auto getSquawk() -> uint16_t { return this->squawk; };
     auto validSquawk() -> bool { return this->squawk_set; };
+    void setLastSeen(uint64_t t_last_seen) { this->last_seen = t_last_seen; };
+    auto getLastSeen() -> uint64_t { return this->last_seen; };
 };
 
 using notify_dump1090_adsb_data_cb = void (*)(ADSBData cmd);
