@@ -158,8 +158,9 @@ void dump1090::processMessages()
         while (offset < buf.length())
         {
             ssize_t received = recv(this->fd, &buf[offset], 1, 0);
-            if (received < 0)
+            if (received <= 0)
             {
+                this->fd = -1;
                 break;
             }
             if (buf[offset] == '\n' || buf[offset] == '\r')
