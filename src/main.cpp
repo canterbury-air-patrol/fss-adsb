@@ -10,7 +10,6 @@
 #include "fss.hpp"
 
 #include "dump1090.hpp"
-#include "aircraft.hpp"
 #include "fss-reporter.hpp"
 
 std::shared_ptr<fss_reporter_client> fss;
