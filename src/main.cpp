@@ -34,6 +34,7 @@ void handle_adsb_data(ADSBData adsb)
         aircraft = std::make_shared<ADSBData>(adsb.getICAOAddress());
         known_aircraft[adsb.getICAOAddress()] = aircraft;
     }
+    aircraft->setLastSeen(flight_safety_system::fss_current_timestamp());
     /* Update the callsign */
     if (adsb.validCallsign() && adsb.getCallsign() != "")
     {
@@ -99,6 +100,26 @@ void handle_adsb_data(ADSBData adsb)
     }
 }
 
+void evict_stale_aircraft()
+{
+    constexpr uint64_t stale_window_ms = 10 * 60 * 1000;
+    uint64_t now = flight_safety_system::fss_current_timestamp();
+    std::unique_lock<std::mutex> lk(known_aircraft_lock);
+    for (auto it = known_aircraft.begin(); it != known_aircraft.end();)
+    {
+        if (now - it->second->getLastSeen() >= stale_window_ms)
+        {
+            std::cout << "Evicting stale aircraft " << std::uppercase << std::hex << it->second->getICAOAddress()
+                      << std::endl;
+            it = known_aircraft.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
 auto main(int argc, char *argv[]) -> int
 {
     constexpr int required_args = 8;
@@ -121,11 +142,18 @@ auto main(int argc, char *argv[]) -> int
     dump1090 dumper = dump1090(argv[1], std::stoi(argv[2]));
     dumper.registerCB(handle_adsb_data);
 
+    constexpr int evict_interval_secs = 60;
+    int seconds_elapsed = 0;
     while (running)
     {
         sleep(1);
         dumper.reconnect();
         fss->attemptReconnect();
+        if (++seconds_elapsed >= evict_interval_secs)
+        {
+            seconds_elapsed = 0;
+            evict_stale_aircraft();
+        }
     }
 
     dumper.disconnect();
