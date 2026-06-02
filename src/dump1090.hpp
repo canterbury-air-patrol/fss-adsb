@@ -87,7 +87,7 @@ private:
     std::string addr;
     uint16_t port;
     std::thread recv_thread{};
-    int fd{0};
+    int fd{-1};
     int retry_count{0};
     uint64_t last_tried{0};
     void processMessage(const std::string &msg);
