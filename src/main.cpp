@@ -93,7 +93,7 @@ void handle_adsb_data(ADSBData adsb)
                 (aircraft->validVertVel() ? valid_vertvel : 0) |
                 /* 256 = baro valid */
                 source_uat /* source = UAT */,
-            /* Using QNH for altitude */
+            /* dump1090 reports barometric pressure altitude (QNE/standard datum), not QNH */
             0,
             /* Type is probably known */
             0, flight_safety_system::fss_current_timestamp());
