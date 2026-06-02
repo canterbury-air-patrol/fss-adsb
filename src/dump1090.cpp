@@ -161,29 +161,35 @@ void dump1090::processMessage(const std::string &t_msg)
 
 void dump1090::processMessages()
 {
+    std::string accumulator;
+    std::string chunk;
+    chunk.resize(buffer_length);
+
     while (this->fd != -1)
     {
-        std::string buf;
-        buf.resize(buffer_length);
-        size_t offset = 0;
-        while (offset < buf.length())
+        ssize_t received = recv(this->fd, &chunk[0], chunk.size(), 0);
+        if (received <= 0)
         {
-            ssize_t received = recv(this->fd, &buf[offset], 1, 0);
-            if (received <= 0)
-            {
-                this->fd = -1;
-                break;
-            }
-            if (buf[offset] == '\n' || buf[offset] == '\r')
-            {
-                buf[offset] = '\0';
-                break;
-            }
-            offset += received;
+            this->fd = -1;
+            break;
         }
-        if (offset > 0)
+        accumulator.append(chunk.data(), static_cast<size_t>(received));
+
+        size_t start = 0;
+        size_t pos;
+        while ((pos = accumulator.find_first_of("\r\n", start)) != std::string::npos)
         {
-            this->processMessage(buf);
+            if (pos > start)
+            {
+                this->processMessage(accumulator.substr(start, pos - start));
+            }
+            start = pos + 1;
+        }
+        accumulator.erase(0, start);
+
+        if (accumulator.size() > static_cast<size_t>(buffer_length))
+        {
+            accumulator.clear();
         }
     }
 }
