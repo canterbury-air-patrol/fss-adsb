@@ -19,6 +19,20 @@
 
 constexpr int buffer_length = 2048;
 
+/* Wrap the unavoidable sockaddr_storage punning casts in one place. */
+static auto as_sockaddr(struct sockaddr_storage *ss) -> struct sockaddr *
+{
+    return reinterpret_cast<struct sockaddr *>(ss); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+}
+static auto as_sockaddr_in(struct sockaddr_storage *ss) -> struct sockaddr_in *
+{
+    return reinterpret_cast<struct sockaddr_in *>(ss); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+}
+static auto as_sockaddr_in6(struct sockaddr_storage *ss) -> struct sockaddr_in6 *
+{
+    return reinterpret_cast<struct sockaddr_in6 *>(ss); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+}
+
 auto convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_storage *sa) -> bool
 {
     int family = AF_UNSPEC;
@@ -29,7 +43,7 @@ auto convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_s
         if (inet_pton(AF_INET, addr.c_str(), &ia) == 1)
         {
             family = AF_INET;
-            auto sa_in = (struct sockaddr_in *)sa;
+            auto *sa_in = as_sockaddr_in(sa);
             memset(sa_in, 0, sizeof(struct sockaddr_in));
             sa_in->sin_family = AF_INET;
             sa_in->sin_addr = ia;
@@ -42,7 +56,7 @@ auto convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_s
         if (inet_pton(AF_INET6, addr.c_str(), &ia) == 1)
         {
             family = AF_INET6;
-            auto sa_in = (struct sockaddr_in6 *)sa;
+            auto *sa_in = as_sockaddr_in6(sa);
             memset(sa_in, 0, sizeof(struct sockaddr_in6));
             sa_in->sin6_family = AF_INET6;
             sa_in->sin6_addr = ia;
@@ -65,20 +79,22 @@ auto convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_s
     switch (family)
     {
         case AF_INET: {
-            auto *sa_in = (struct sockaddr_in *)sa;
+            auto *sa_in = as_sockaddr_in(sa);
             sa_in->sin_port = htons(port);
         }
         break;
         case AF_INET6: {
-            auto *sa_in = (struct sockaddr_in6 *)sa;
+            auto *sa_in = as_sockaddr_in6(sa);
             sa_in->sin6_port = htons(port);
         }
+        break;
+        default: break;
     }
 
     return family != AF_UNSPEC;
 }
 
-using sbs1_fields = enum sbs1_fields_e {
+using sbs1_fields = enum sbs1_fields_e : std::uint8_t {
     sbs1_field_type = 0,
     sbs1_field_id = 1,
     sbs1_field_address = 4,
@@ -92,7 +108,7 @@ using sbs1_fields = enum sbs1_fields_e {
     sbs1_field_squawk = 17,
 };
 
-using sbs1_msgs_ids = enum sbs1_msg_ids_e {
+using sbs1_msgs_ids = enum sbs1_msg_ids_e : std::uint8_t {
     sbs1_id_ident = 1,
     sbs1_id_airborne_pos = 3,
     sbs1_id_airborne_vel = 4,
@@ -139,7 +155,7 @@ void dump1090::processMessage(const std::string &t_msg)
             case sbs1_id_airborne_vel:
                 adsb.setSpeed(sbs1_to_ul(data[sbs1_field_groundspeed]));
                 adsb.setHeading(sbs1_to_ul(data[sbs1_field_track]));
-                adsb.setVertVel(sbs1_to_l(data[sbs1_field_vertrate]));
+                adsb.setVertVel(static_cast<int16_t>(sbs1_to_l(data[sbs1_field_vertrate])));
                 break;
             case sbs1_id_surveillence_id: adsb.setSquawk(sbs1_to_ul(data[sbs1_field_squawk])); break;
             case sbs1_id_surveillence_alt:
@@ -148,8 +164,7 @@ void dump1090::processMessage(const std::string &t_msg)
                 /* Don't care about these messages */
                 break;
             default:
-                std::cout << "Ignoring message " << data[sbs1_field_id] << " from " << data[sbs1_field_address]
-                          << std::endl;
+                std::cout << "Ignoring message " << data[sbs1_field_id] << " from " << data[sbs1_field_address] << "\n";
                 return;
         }
         if (this->adsb_cb)
@@ -214,11 +229,11 @@ void dump1090::connect_to_dump1090()
 
     this->fd = socket(remote.ss_family == AF_INET ? PF_INET : PF_INET6, SOCK_STREAM, IPPROTO_TCP);
 
-    if (connect(this->fd, (struct sockaddr *)&remote,
+    if (connect(this->fd, as_sockaddr(&remote),
                 remote.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6)) < 0)
     {
         perror("Failed to connect");
-        std::cout << "Accessing " << this->addr << ":" << this->port << std::endl;
+        std::cout << "Accessing " << this->addr << ":" << this->port << "\n";
         close(this->fd);
         this->fd = -1;
         return;
