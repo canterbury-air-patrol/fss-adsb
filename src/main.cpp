@@ -74,7 +74,7 @@ void handle_adsb_data(ADSBData adsb)
         constexpr uint32_t valid_callsign = 16;
         constexpr uint32_t valid_squawk = 32;
         constexpr uint32_t valid_vertvel = 128;
-        constexpr uint32_t source_uat = 32768;
+        /* ADSB_FLAGS_SOURCE_UAT = 32768 is the only source flag; its absence means 1090ES */
 
         std::cout << "Reporting position" << std::endl;
         fss->reportAircraft(
@@ -90,9 +90,7 @@ void handle_adsb_data(ADSBData adsb)
                 (aircraft->validHeading() ? valid_heading : 0) | (aircraft->validSpeed() ? valid_speed : 0) |
                 (aircraft->validCallsign() ? valid_callsign : 0) | (aircraft->validSquawk() ? valid_squawk : 0) |
                 /* 64 = simulated */
-                (aircraft->validVertVel() ? valid_vertvel : 0) |
-                /* 256 = baro valid */
-                source_uat /* source = UAT */,
+                (aircraft->validVertVel() ? valid_vertvel : 0),
             /* dump1090 reports barometric pressure altitude (QNE/standard datum), not QNH */
             0,
             /* Type is probably known */
