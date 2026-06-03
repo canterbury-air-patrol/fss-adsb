@@ -1,0 +1,22 @@
+---
+# Enabled check families (mirrors flight-safety-system's baseline).
+# readability-magic-numbers is disabled: the codebase uses numeric constants
+# in wire-protocol packing/unpacking where named constants would obscure the
+# byte-layout intent.
+Checks: >-
+  bugprone-*,
+  performance-*,
+  modernize-*,
+  cppcoreguidelines-pro-type-*,
+  -readability-magic-numbers
+
+# Headers under src/ are part of the project; include findings from them.
+HeaderFilterRegex: "src/.*"
+
+# Extra per-check options.
+CheckOptions:
+  - key: modernize-use-default-member-init.UseAssignment
+    value: "true"
+  - key: cppcoreguidelines-pro-type-reinterpret-cast.StrictMode
+    value: "false"
+...

@@ -26,7 +26,7 @@ std::mutex known_aircraft_lock;
 
 void handle_adsb_data(ADSBData adsb)
 {
-    std::cout << "ADSB Data for " << std::uppercase << std::hex << adsb.getICAOAddress() << std::endl;
+    std::cout << "ADSB Data for " << std::uppercase << std::hex << adsb.getICAOAddress() << "\n";
     std::unique_lock<std::mutex> lk(known_aircraft_lock);
     auto aircraft = known_aircraft[adsb.getICAOAddress()];
     if (aircraft == nullptr)
@@ -40,7 +40,7 @@ void handle_adsb_data(ADSBData adsb)
     {
         aircraft->setCallsign(adsb.getCallsign());
     }
-    std::cout << "Callsign: " << aircraft->getCallsign() << std::endl;
+    std::cout << "Callsign: " << aircraft->getCallsign() << "\n";
     /* Update other fields */
     if (adsb.validAltitude())
     {
@@ -56,7 +56,7 @@ void handle_adsb_data(ADSBData adsb)
     }
     if (adsb.validVertVel())
     {
-        aircraft->setVertVel(adsb.getVertVel());
+        aircraft->setVertVel(static_cast<int16_t>(adsb.getVertVel()));
     }
     if (adsb.validSquawk())
     {
@@ -76,12 +76,13 @@ void handle_adsb_data(ADSBData adsb)
         constexpr uint32_t valid_vertvel = 128;
         /* ADSB_FLAGS_SOURCE_UAT = 32768 is the only source flag; its absence means 1090ES */
 
-        std::cout << "Reporting position" << std::endl;
+        std::cout << "Reporting position" << "\n";
         fss->reportAircraft(
             adsb.getPosition().getLongitude(), adsb.getPosition().getLatitude(), adsb.getAltitude(),
             aircraft->getHeading() * deg_to_centideg, /* Heading needs to be reported in centi-degrees */
             static_cast<uint16_t>(aircraft->getSpeed() * knots_to_cms), /* Speed needs to be reported in in cm/s */
-            static_cast<uint16_t>(aircraft->getVertVel() * ft_to_cm), /* Vertical Speed needs to be reported in cm/s */
+            static_cast<int16_t>(static_cast<uint16_t>(aircraft->getVertVel() *
+                                                       ft_to_cm)), /* Vertical Speed needs to be reported in cm/s */
             aircraft->getICAOAddress(), aircraft->getCallsign(), aircraft->getSquawk(),
             /* Time since last contact (0), we just saw it now */
             0,
@@ -100,7 +101,7 @@ void handle_adsb_data(ADSBData adsb)
 
 void evict_stale_aircraft()
 {
-    constexpr uint64_t stale_window_ms = 10 * 60 * 1000;
+    constexpr uint64_t stale_window_ms = UINT64_C(10) * 60 * 1000;
     uint64_t now = flight_safety_system::fss_current_timestamp();
     std::unique_lock<std::mutex> lk(known_aircraft_lock);
     for (auto it = known_aircraft.begin(); it != known_aircraft.end();)
@@ -108,7 +109,7 @@ void evict_stale_aircraft()
         if (now - it->second->getLastSeen() >= stale_window_ms)
         {
             std::cout << "Evicting stale aircraft " << std::uppercase << std::hex << it->second->getICAOAddress()
-                      << std::endl;
+                      << "\n";
             it = known_aircraft.erase(it);
         }
         else
@@ -124,7 +125,7 @@ auto main(int argc, char *argv[]) -> int
     if (argc != required_args)
     {
         std::cerr << "Usage: " << argv[0]
-                  << " dump1090-host dump1090-port fss-host fss-port ca.public.key private.key public.key" << std::endl;
+                  << " dump1090-host dump1090-port fss-host fss-port ca.public.key private.key public.key" << "\n";
         return -1;
     }
 
