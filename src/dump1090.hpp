@@ -105,4 +105,7 @@ public:
     void processMessages();
     void registerCB(notify_dump1090_adsb_data_cb t_cb) { this->adsb_cb = t_cb; };
     void disconnect();
+#ifdef FSS_ADSB_TESTING
+    void test_processMessage(const std::string &msg) { processMessage(msg); }
+#endif
 };
