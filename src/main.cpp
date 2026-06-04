@@ -1,8 +1,10 @@
 #include <iostream>
 #include <csignal>
+#include <cstdlib>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 
 #include <string>
 #include <unistd.h>
@@ -123,6 +125,20 @@ void evict_stale_aircraft()
     }
 }
 
+/* Parse a TCP port, rejecting non-numeric, out-of-range and trailing-garbage
+ * input (std::stoi would throw, and silently truncated to uint16_t). */
+static auto parse_port(const std::string &arg) -> std::optional<uint16_t>
+{
+    constexpr int base10 = 10;
+    char *end = nullptr;
+    unsigned long value = std::strtoul(arg.c_str(), &end, base10);
+    if (end == arg.c_str() || *end != '\0' || value < 1 || value > UINT16_MAX)
+    {
+        return std::nullopt;
+    }
+    return static_cast<uint16_t>(value);
+}
+
 auto main(int argc, char *argv[]) -> int
 {
     constexpr int required_args = 8;
@@ -133,16 +149,24 @@ auto main(int argc, char *argv[]) -> int
         return -1;
     }
 
+    auto dump1090_port = parse_port(argv[2]);
+    auto fss_port = parse_port(argv[4]);
+    if (!dump1090_port || !fss_port)
+    {
+        std::cerr << "Invalid port number (must be 1-65535)\n";
+        return EXIT_FAILURE;
+    }
+
     /* Watch out for sigint */
     signal(SIGINT, sigIntHandler);
     /* Ignore SIGPIPE */
     signal(SIGPIPE, SIG_IGN);
 
     /* Connect to FSS Server */
-    fss = std::make_shared<fss_reporter_client>(argv[3], std::stoi(argv[4]), argv[5], argv[6], argv[7]);
+    fss = std::make_shared<fss_reporter_client>(argv[3], *fss_port, argv[5], argv[6], argv[7]);
 
     /* Connect to Dump1090 */
-    dump1090 dumper = dump1090(argv[1], std::stoi(argv[2]));
+    dump1090 dumper = dump1090(argv[1], *dump1090_port);
     dumper.registerCB(handle_adsb_data);
 
     constexpr int evict_interval_secs = 60;
