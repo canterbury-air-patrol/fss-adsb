@@ -247,7 +247,6 @@ void dump1090::connect_to_dump1090()
         return;
     }
 
-    this->retry_count = 0;
     this->retry_delay = this->retry_delay_start;
 
     this->recv_thread = std::thread(recv_adsb_thread, this);
@@ -262,7 +261,6 @@ void dump1090::reconnect()
 
         if (elapsed_time > this->retry_delay)
         {
-            this->retry_count++;
             if (this->retry_delay < retry_delay_cap)
             {
                 this->retry_delay += this->retry_delay;
