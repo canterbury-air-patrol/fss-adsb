@@ -219,3 +219,21 @@ TEST_CASE("degrees -> centidegrees", "[units]")
     CHECK(adsb_units::deg_to_centideg(270) == 27000);
     CHECK(adsb_units::deg_to_centideg(359) == 35900);
 }
+
+// ---------------------------------------------------------------------------
+// Staleness
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ADSBData::isStale", "[stale]")
+{
+    constexpr uint64_t window = 600000; // 10 minutes in ms
+    ADSBData a(0xABCDEF);
+    a.setLastSeen(1000);
+
+    CHECK_FALSE(a.isStale(1000, window));              // just seen
+    CHECK_FALSE(a.isStale(1000 + window - 1, window)); // not quite stale
+    CHECK(a.isStale(1000 + window, window));           // exactly the window
+    CHECK(a.isStale(1000 + window + 1, window));       // well past
+    // Clock stepped backwards (now < last_seen): must not underflow to "stale".
+    CHECK_FALSE(a.isStale(500, window));
+}
