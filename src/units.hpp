@@ -10,7 +10,7 @@
 namespace adsb_units {
 
 /* Ground speed: knots -> cm/s (FSS horizontal velocity). */
-inline auto knots_to_cm_per_s(uint32_t knots) -> uint16_t
+constexpr auto knots_to_cm_per_s(uint32_t knots) -> uint16_t
 {
     constexpr double knots_to_cms = 51.444;
     double cms = knots * knots_to_cms;
@@ -18,7 +18,7 @@ inline auto knots_to_cm_per_s(uint32_t knots) -> uint16_t
 }
 
 /* Vertical rate: feet/minute -> cm/s (FSS vertical velocity, signed). */
-inline auto ft_per_min_to_cm_per_s(int16_t ft_per_min) -> int16_t
+constexpr auto ft_per_min_to_cm_per_s(int16_t ft_per_min) -> int16_t
 {
     constexpr double ftpermin_to_cms = 30.48 / 60.0;
     double cms = ft_per_min * ftpermin_to_cms;
@@ -26,7 +26,7 @@ inline auto ft_per_min_to_cm_per_s(int16_t ft_per_min) -> int16_t
 }
 
 /* Heading: degrees -> centidegrees (FSS heading). */
-inline auto deg_to_centideg(uint32_t deg) -> uint16_t
+constexpr auto deg_to_centideg(uint32_t deg) -> uint16_t
 {
     constexpr uint32_t scale = 100;
     uint32_t cdeg = deg * scale;
