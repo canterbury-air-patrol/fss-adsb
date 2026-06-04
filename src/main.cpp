@@ -14,6 +14,7 @@
 
 #include "dump1090.hpp"
 #include "fss-reporter.hpp"
+#include "units.hpp"
 
 std::shared_ptr<fss_reporter_client> fss;
 /* Serialises access to the FSS client: reportAircraft() runs on the dump1090
@@ -71,9 +72,6 @@ void handle_adsb_data(ADSBData adsb)
     }
     if (adsb.getPosition().getValid())
     {
-        constexpr uint32_t deg_to_centideg = 100;
-        constexpr double knots_to_cms = 51.444;
-        constexpr double ftpermin_to_cms = 30.48 / 60.0; /* SBS-1 vertical rate is feet/minute */
         constexpr uint32_t valid_coords = 1;
         constexpr uint32_t valid_altitude = 2;
         constexpr uint32_t valid_heading = 4;
@@ -87,10 +85,9 @@ void handle_adsb_data(ADSBData adsb)
         std::scoped_lock<std::mutex> fss_lk(fss_lock);
         fss->reportAircraft(
             adsb.getPosition().getLatitude(), adsb.getPosition().getLongitude(), adsb.getAltitude(),
-            aircraft->getHeading() * deg_to_centideg, /* Heading needs to be reported in centi-degrees */
-            static_cast<uint16_t>(aircraft->getSpeed() * knots_to_cms),     /* Speed needs to be reported in in cm/s */
-            static_cast<int16_t>(aircraft->getVertVel() * ftpermin_to_cms), /* Vertical speed reported in cm/s */
-            aircraft->getICAOAddress(), aircraft->getCallsign(), aircraft->getSquawk(),
+            adsb_units::deg_to_centideg(aircraft->getHeading()), adsb_units::knots_to_cm_per_s(aircraft->getSpeed()),
+            adsb_units::ft_per_min_to_cm_per_s(aircraft->getVertVel()), aircraft->getICAOAddress(),
+            aircraft->getCallsign(), aircraft->getSquawk(),
             /* Time since last contact (0), we just saw it now */
             0,
             /* Report valid for: coords, (and as known about other fields) */

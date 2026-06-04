@@ -4,6 +4,7 @@
 #include <string>
 
 #include "../dump1090.hpp"
+#include "../units.hpp"
 
 // adsb_cb is a plain C function pointer (void(*)(ADSBData)) so it cannot carry
 // state via a lambda capture. Results are funnelled through file-scope storage,
@@ -190,4 +191,31 @@ TEST_CASE_METHOD(ParserFixture, "Non-numeric transmission type treated as type 0
     // strtol("X") -> 0, which hits the default branch -> no callback
     feed(makeMsg("X", "A12345"));
     CHECK(g_call_count == 0);
+}
+
+// ---------------------------------------------------------------------------
+// Unit conversions (source units -> FSS report units)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("knots -> cm/s", "[units]")
+{
+    CHECK(adsb_units::knots_to_cm_per_s(0) == 0);
+    // 450 kt * 51.444 cm/s/kt = 23149.8 -> truncates to 23149
+    CHECK(adsb_units::knots_to_cm_per_s(450) == 23149);
+}
+
+TEST_CASE("feet/minute -> cm/s preserves sign", "[units]")
+{
+    CHECK(adsb_units::ft_per_min_to_cm_per_s(0) == 0);
+    // 1000 ft/min * (30.48/60) = 508 cm/s
+    CHECK(adsb_units::ft_per_min_to_cm_per_s(1000) == 508);
+    // a descent stays negative (regression guard for the old unsigned/x60 bug)
+    CHECK(adsb_units::ft_per_min_to_cm_per_s(-1024) == -520);
+}
+
+TEST_CASE("degrees -> centidegrees", "[units]")
+{
+    CHECK(adsb_units::deg_to_centideg(0) == 0);
+    CHECK(adsb_units::deg_to_centideg(270) == 27000);
+    CHECK(adsb_units::deg_to_centideg(359) == 35900);
 }
