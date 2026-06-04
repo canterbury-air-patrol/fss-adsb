@@ -221,6 +221,14 @@ dump1090::dump1090(std::string t_addr, uint16_t t_port) : addr(std::move(t_addr)
 
 void dump1090::connect_to_dump1090()
 {
+    /* A previous receive thread may have already exited (connection dropped, fd
+     * set to -1). It is still joinable until joined, and move-assigning a new
+     * std::thread onto a joinable one calls std::terminate(). Join it first. */
+    if (this->recv_thread.joinable())
+    {
+        this->recv_thread.join();
+    }
+
     struct sockaddr_storage remote = {};
     if (!convert_str_to_sa(this->addr, this->port, &remote))
     {
