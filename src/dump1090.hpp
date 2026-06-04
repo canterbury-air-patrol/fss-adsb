@@ -82,6 +82,13 @@ public:
     auto validSquawk() -> bool { return this->squawk_set; };
     void setLastSeen(uint64_t t_last_seen) { this->last_seen = t_last_seen; };
     auto getLastSeen() -> uint64_t { return this->last_seen; };
+    /* Stale if last seen at least window ms ago. The now >= last_seen guard
+     * stops a backwards clock step (NTP) from underflowing the subtraction and
+     * evicting every aircraft. */
+    auto isStale(uint64_t now, uint64_t window) -> bool
+    {
+        return now >= this->last_seen && (now - this->last_seen) >= window;
+    }
 };
 
 using notify_dump1090_adsb_data_cb = void (*)(ADSBData cmd);

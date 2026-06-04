@@ -110,7 +110,7 @@ void evict_stale_aircraft()
     std::unique_lock<std::mutex> lk(known_aircraft_lock);
     for (auto it = known_aircraft.begin(); it != known_aircraft.end();)
     {
-        if (now - it->second->getLastSeen() >= stale_window_ms)
+        if (it->second->isStale(now, stale_window_ms))
         {
             FSS_LOG_INFO("adsb",
                          "Evicting stale aircraft " << std::uppercase << std::hex << it->second->getICAOAddress());
