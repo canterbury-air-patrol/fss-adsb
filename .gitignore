@@ -18,3 +18,22 @@ ltmain.sh
 m4/
 missing
 stamp-h1
+.libs/
+test-driver
+
+# Test binaries and logs
+src/test_dump1090
+test-suite.log
+*.log
+*.trs
+
+# Clang tooling
+clang-tidy.log
+compile_commands.json
+
+# Coverage reports
+reports/
+reports_html/
+
+# Local working notes
+todo/
