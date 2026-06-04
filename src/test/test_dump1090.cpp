@@ -202,6 +202,8 @@ TEST_CASE("knots -> cm/s", "[units]")
     CHECK(adsb_units::knots_to_cm_per_s(0) == 0);
     // 450 kt * 51.444 cm/s/kt = 23149.8 -> truncates to 23149
     CHECK(adsb_units::knots_to_cm_per_s(450) == 23149);
+    // Out-of-range input clamps to UINT16_MAX instead of wrapping
+    CHECK(adsb_units::knots_to_cm_per_s(100000) == UINT16_MAX);
 }
 
 TEST_CASE("feet/minute -> cm/s preserves sign", "[units]")
@@ -218,6 +220,8 @@ TEST_CASE("degrees -> centidegrees", "[units]")
     CHECK(adsb_units::deg_to_centideg(0) == 0);
     CHECK(adsb_units::deg_to_centideg(270) == 27000);
     CHECK(adsb_units::deg_to_centideg(359) == 35900);
+    // Out-of-range heading clamps to UINT16_MAX instead of wrapping
+    CHECK(adsb_units::deg_to_centideg(1000) == UINT16_MAX);
 }
 
 // ---------------------------------------------------------------------------
