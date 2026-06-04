@@ -224,6 +224,11 @@ TEST_CASE("degrees -> centidegrees", "[units]")
     CHECK(adsb_units::deg_to_centideg(1000) == UINT16_MAX);
 }
 
+// The conversions are constexpr: these fail to compile if that regresses.
+static_assert(adsb_units::knots_to_cm_per_s(450) == 23149, "knots conversion must be constexpr");
+static_assert(adsb_units::ft_per_min_to_cm_per_s(-1024) == -520, "vertical-rate conversion must be constexpr");
+static_assert(adsb_units::deg_to_centideg(270) == 27000, "heading conversion must be constexpr");
+
 // ---------------------------------------------------------------------------
 // Staleness
 // ---------------------------------------------------------------------------
