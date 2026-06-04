@@ -94,7 +94,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 4 (airborne vel) sets speed, heading a
     CHECK(g_captured->validHeading());
     CHECK(g_captured->getHeading() == 270);
     CHECK(g_captured->validVertVel());
-    CHECK(static_cast<int16_t>(g_captured->getVertVel()) == -1024);
+    CHECK(g_captured->getVertVel() == -1024);
 }
 
 TEST_CASE_METHOD(ParserFixture, "MSG type 6 (surveillance id) sets squawk", "[parser][valid]")

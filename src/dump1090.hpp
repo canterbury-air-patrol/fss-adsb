@@ -70,7 +70,7 @@ public:
         this->vert_vel = t_vert_vel;
         this->vert_vel_set = true;
     };
-    auto getVertVel() -> uint16_t { return this->vert_vel; };
+    auto getVertVel() -> int16_t { return this->vert_vel; };
     auto validVertVel() -> bool { return this->vert_vel_set; };
     void setSquawk(uint16_t t_sqawk)
     {

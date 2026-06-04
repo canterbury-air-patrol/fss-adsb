@@ -56,7 +56,7 @@ void handle_adsb_data(ADSBData adsb)
     }
     if (adsb.validVertVel())
     {
-        aircraft->setVertVel(static_cast<int16_t>(adsb.getVertVel()));
+        aircraft->setVertVel(adsb.getVertVel());
     }
     if (adsb.validSquawk())
     {
@@ -66,7 +66,7 @@ void handle_adsb_data(ADSBData adsb)
     {
         constexpr uint32_t deg_to_centideg = 100;
         constexpr double knots_to_cms = 51.444;
-        constexpr double ft_to_cm = 30.48;
+        constexpr double ftpermin_to_cms = 30.48 / 60.0; /* SBS-1 vertical rate is feet/minute */
         constexpr uint32_t valid_coords = 1;
         constexpr uint32_t valid_altitude = 2;
         constexpr uint32_t valid_heading = 4;
@@ -80,9 +80,8 @@ void handle_adsb_data(ADSBData adsb)
         fss->reportAircraft(
             adsb.getPosition().getLongitude(), adsb.getPosition().getLatitude(), adsb.getAltitude(),
             aircraft->getHeading() * deg_to_centideg, /* Heading needs to be reported in centi-degrees */
-            static_cast<uint16_t>(aircraft->getSpeed() * knots_to_cms), /* Speed needs to be reported in in cm/s */
-            static_cast<int16_t>(static_cast<uint16_t>(aircraft->getVertVel() *
-                                                       ft_to_cm)), /* Vertical Speed needs to be reported in cm/s */
+            static_cast<uint16_t>(aircraft->getSpeed() * knots_to_cms),     /* Speed needs to be reported in in cm/s */
+            static_cast<int16_t>(aircraft->getVertVel() * ftpermin_to_cms), /* Vertical speed reported in cm/s */
             aircraft->getICAOAddress(), aircraft->getCallsign(), aircraft->getSquawk(),
             /* Time since last contact (0), we just saw it now */
             0,
