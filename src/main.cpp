@@ -78,7 +78,7 @@ void handle_adsb_data(ADSBData adsb)
 
         std::cout << "Reporting position" << "\n";
         fss->reportAircraft(
-            adsb.getPosition().getLongitude(), adsb.getPosition().getLatitude(), adsb.getAltitude(),
+            adsb.getPosition().getLatitude(), adsb.getPosition().getLongitude(), adsb.getAltitude(),
             aircraft->getHeading() * deg_to_centideg, /* Heading needs to be reported in centi-degrees */
             static_cast<uint16_t>(aircraft->getSpeed() * knots_to_cms),     /* Speed needs to be reported in in cm/s */
             static_cast<int16_t>(aircraft->getVertVel() * ftpermin_to_cms), /* Vertical speed reported in cm/s */
