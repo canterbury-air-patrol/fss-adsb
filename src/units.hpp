@@ -1,31 +1,36 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 
 /* Pure unit conversions from ADS-B / SBS-1 source units to the units the FSS
  * position report expects. Kept header-only and side-effect free so they can be
- * unit-tested directly. */
+ * unit-tested directly. Each result is clamped to its output type's range so an
+ * out-of-range (or garbage) input cannot silently wrap around. */
 namespace adsb_units {
 
 /* Ground speed: knots -> cm/s (FSS horizontal velocity). */
 inline auto knots_to_cm_per_s(uint32_t knots) -> uint16_t
 {
     constexpr double knots_to_cms = 51.444;
-    return static_cast<uint16_t>(knots * knots_to_cms);
+    double cms = knots * knots_to_cms;
+    return static_cast<uint16_t>(std::min(cms, static_cast<double>(UINT16_MAX)));
 }
 
 /* Vertical rate: feet/minute -> cm/s (FSS vertical velocity, signed). */
 inline auto ft_per_min_to_cm_per_s(int16_t ft_per_min) -> int16_t
 {
     constexpr double ftpermin_to_cms = 30.48 / 60.0;
-    return static_cast<int16_t>(ft_per_min * ftpermin_to_cms);
+    double cms = ft_per_min * ftpermin_to_cms;
+    return static_cast<int16_t>(std::clamp(cms, static_cast<double>(INT16_MIN), static_cast<double>(INT16_MAX)));
 }
 
 /* Heading: degrees -> centidegrees (FSS heading). */
 inline auto deg_to_centideg(uint32_t deg) -> uint16_t
 {
     constexpr uint32_t scale = 100;
-    return static_cast<uint16_t>(deg * scale);
+    uint32_t cdeg = deg * scale;
+    return static_cast<uint16_t>(std::min<uint32_t>(cdeg, UINT16_MAX));
 }
 
 } // namespace adsb_units
