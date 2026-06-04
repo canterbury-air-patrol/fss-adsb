@@ -1,3 +1,4 @@
+#include <atomic>
 #include <string>
 #include <thread>
 #include <cstdint>
@@ -90,7 +91,9 @@ private:
     std::string addr;
     uint16_t port;
     std::thread recv_thread{};
-    int fd{-1};
+    /* Shared between the main thread (connect/reconnect/disconnect) and the
+     * receive thread, which sets it to -1 on disconnect; must be atomic. */
+    std::atomic<int> fd{-1};
     int retry_count{0};
     uint64_t last_tried{0};
     void processMessage(const std::string &msg);
