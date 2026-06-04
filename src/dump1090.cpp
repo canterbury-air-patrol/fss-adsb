@@ -235,7 +235,13 @@ void dump1090::connect_to_dump1090()
         return;
     }
 
-    this->fd = socket(remote.ss_family == AF_INET ? PF_INET : PF_INET6, SOCK_STREAM, IPPROTO_TCP);
+    int new_fd = socket(remote.ss_family == AF_INET ? PF_INET : PF_INET6, SOCK_STREAM, IPPROTO_TCP);
+    if (new_fd == -1)
+    {
+        perror("Failed to create socket");
+        return;
+    }
+    this->fd = new_fd;
 
     if (connect(this->fd, as_sockaddr(&remote),
                 remote.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6)) < 0)
