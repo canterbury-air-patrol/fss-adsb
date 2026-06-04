@@ -36,6 +36,7 @@ struct ParserFixture {
 
 // Build a well-formed 22-field MSG record. Field layout matches the SBS-1
 // BaseStation format: indices per the sbs1_fields enum in dump1090.cpp.
+// Note the wire order is latitude (field 14) then longitude (field 15).
 std::string makeMsg(
     const std::string &transmissionType,
     const std::string &addr     = "A12345",
@@ -43,15 +44,15 @@ std::string makeMsg(
     const std::string &altitude = "",
     const std::string &gs       = "",
     const std::string &track    = "",
-    const std::string &lon      = "",
     const std::string &lat      = "",
+    const std::string &lon      = "",
     const std::string &vrate    = "",
     const std::string &squawk   = "")
 {
     return "MSG," + transmissionType + ",111,11111," + addr + ",111111,"
          + "2024/01/01,00:00:00.000,2024/01/01,00:00:00.000,"
          + callsign + "," + altitude + "," + gs + "," + track + ","
-         + lon + "," + lat + "," + vrate + "," + squawk + ","
+         + lat + "," + lon + "," + vrate + "," + squawk + ","
          + ",,,";
 }
 
@@ -74,7 +75,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 1 (ident) sets callsign", "[parser][va
 
 TEST_CASE_METHOD(ParserFixture, "MSG type 3 (airborne pos) sets position and altitude", "[parser][valid]")
 {
-    feed(makeMsg("3", "ABCDEF", "", "35000", "", "", "174.7633", "-36.8485"));
+    feed(makeMsg("3", "ABCDEF", "", "35000", "", "", "-36.8485", "174.7633"));
     REQUIRE(g_call_count == 1);
     CHECK(g_captured->getICAOAddress() == 0xABCDEF);
     CHECK(g_captured->validAltitude());

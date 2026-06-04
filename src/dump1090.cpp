@@ -102,8 +102,8 @@ using sbs1_fields = enum sbs1_fields_e : std::uint8_t {
     sbs1_field_altitude = 11,
     sbs1_field_groundspeed = 12,
     sbs1_field_track = 13,
-    sbs1_field_lng = 14,
-    sbs1_field_lat = 15,
+    sbs1_field_lat = 14,
+    sbs1_field_lng = 15,
     sbs1_field_vertrate = 16,
     sbs1_field_squawk = 17,
 };
