@@ -146,7 +146,7 @@ auto main(int argc, char *argv[]) -> int
     {
         std::cerr << "Usage: " << argv[0]
                   << " dump1090-host dump1090-port fss-host fss-port ca.public.key private.key public.key" << "\n";
-        return -1;
+        return EXIT_FAILURE;
     }
 
     auto dump1090_port = parse_port(argv[2]);
