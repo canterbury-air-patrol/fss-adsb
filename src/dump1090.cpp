@@ -16,6 +16,7 @@
 #include <unistd.h>
 
 #include <fss.hpp>
+#include <fss-log.hpp>
 
 constexpr int buffer_length = 2048;
 
@@ -164,7 +165,8 @@ void dump1090::processMessage(const std::string &t_msg)
                 /* Don't care about these messages */
                 break;
             default:
-                std::cout << "Ignoring message " << data[sbs1_field_id] << " from " << data[sbs1_field_address] << "\n";
+                FSS_LOG_DEBUG("dump1090",
+                              "Ignoring message " << data[sbs1_field_id] << " from " << data[sbs1_field_address]);
                 return;
         }
         if (this->adsb_cb)
@@ -247,7 +249,7 @@ void dump1090::connect_to_dump1090()
                 remote.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6)) < 0)
     {
         perror("Failed to connect");
-        std::cout << "Accessing " << this->addr << ":" << this->port << "\n";
+        FSS_LOG_WARN("dump1090", "Could not reach dump1090 at " << this->addr << ":" << this->port);
         close(this->fd);
         this->fd = -1;
         return;

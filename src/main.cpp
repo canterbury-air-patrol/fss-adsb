@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include "fss.hpp"
+#include <fss-log.hpp>
 
 #include "dump1090.hpp"
 #include "fss-reporter.hpp"
@@ -32,7 +33,7 @@ std::mutex known_aircraft_lock;
 
 void handle_adsb_data(ADSBData adsb)
 {
-    std::cout << "ADSB Data for " << std::uppercase << std::hex << adsb.getICAOAddress() << "\n";
+    FSS_LOG_DEBUG("adsb", "ADSB Data for " << std::uppercase << std::hex << adsb.getICAOAddress());
     std::unique_lock<std::mutex> lk(known_aircraft_lock);
     auto aircraft = known_aircraft[adsb.getICAOAddress()];
     if (aircraft == nullptr)
@@ -46,7 +47,7 @@ void handle_adsb_data(ADSBData adsb)
     {
         aircraft->setCallsign(adsb.getCallsign());
     }
-    std::cout << "Callsign: " << aircraft->getCallsign() << "\n";
+    FSS_LOG_DEBUG("adsb", "Callsign: " << aircraft->getCallsign());
     /* Update other fields */
     if (adsb.validAltitude())
     {
@@ -82,7 +83,7 @@ void handle_adsb_data(ADSBData adsb)
         constexpr uint32_t valid_vertvel = 128;
         /* ADSB_FLAGS_SOURCE_UAT = 32768 is the only source flag; its absence means 1090ES */
 
-        std::cout << "Reporting position" << "\n";
+        FSS_LOG_DEBUG("adsb", "Reporting position");
         std::scoped_lock<std::mutex> fss_lk(fss_lock);
         fss->reportAircraft(
             adsb.getPosition().getLatitude(), adsb.getPosition().getLongitude(), adsb.getAltitude(),
@@ -114,8 +115,8 @@ void evict_stale_aircraft()
     {
         if (now - it->second->getLastSeen() >= stale_window_ms)
         {
-            std::cout << "Evicting stale aircraft " << std::uppercase << std::hex << it->second->getICAOAddress()
-                      << "\n";
+            FSS_LOG_INFO("adsb",
+                         "Evicting stale aircraft " << std::uppercase << std::hex << it->second->getICAOAddress());
             it = known_aircraft.erase(it);
         }
         else
