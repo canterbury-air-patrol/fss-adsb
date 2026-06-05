@@ -16,6 +16,8 @@
 #include <netdb.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <poll.h>
 
 #include <fss.hpp>
 #include <fss-log.hpp>
@@ -37,6 +39,19 @@ static auto as_sockaddr_in(struct sockaddr_storage *ss) -> struct sockaddr_in *
 static auto as_sockaddr_in6(struct sockaddr_storage *ss) -> struct sockaddr_in6 *
 {
     return reinterpret_cast<struct sockaddr_in6 *>(ss); // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+}
+
+/* Toggle O_NONBLOCK on a socket. fcntl() is variadic, so keep the unavoidable
+ * vararg calls in one place. Returns false (with errno set) on failure. */
+static auto set_nonblocking(int fd, bool enable) -> bool
+{
+    int flags = fcntl(fd, F_GETFL, 0); // NOLINT(cppcoreguidelines-pro-type-vararg)
+    if (flags == -1)
+    {
+        return false;
+    }
+    flags = enable ? (flags | O_NONBLOCK) : (flags & ~O_NONBLOCK);
+    return fcntl(fd, F_SETFL, flags) != -1; // NOLINT(cppcoreguidelines-pro-type-vararg)
 }
 
 auto convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_storage *sa) -> bool
@@ -258,20 +273,81 @@ void dump1090::connect_to_dump1090()
                      "Failed to create socket: " << std::system_category().message(err) << " (errno " << err << ")");
         return;
     }
-    this->fd = new_fd;
 
-    if (connect(this->fd, as_sockaddr(&remote),
-                remote.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6)) < 0)
+    /* Set non-blocking so connect() returns immediately and we can poll() with
+     * a bounded timeout instead of blocking the main thread indefinitely. */
+    if (!set_nonblocking(new_fd, true))
+    {
+        int err = errno;
+        FSS_LOG_WARN(log_component,
+                     "Failed to set non-blocking: " << std::system_category().message(err) << " (errno " << err << ")");
+        close(new_fd);
+        return;
+    }
+
+    socklen_t addrlen = remote.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
+    int rc = connect(new_fd, as_sockaddr(&remote), addrlen);
+    if (rc < 0 && errno != EINPROGRESS)
     {
         int err = errno;
         FSS_LOG_WARN(log_component, "Could not reach dump1090 at " << this->addr << ":" << this->port << ": "
                                                                    << std::system_category().message(err) << " (errno "
                                                                    << err << ")");
-        close(this->fd);
-        this->fd = -1;
+        close(new_fd);
         return;
     }
 
+    if (rc != 0)
+    {
+        /* EINPROGRESS: wait for the socket to become writable (connect done). */
+        struct pollfd pfd = {};
+        pfd.fd = new_fd;
+        pfd.events = POLLOUT;
+        int poll_rc = poll(&pfd, 1, connect_timeout_ms);
+        if (poll_rc == 0)
+        {
+            /* Timed out — treat as unreachable. */
+            FSS_LOG_WARN(log_component, "Could not reach dump1090 at " << this->addr << ":" << this->port
+                                                                       << ": Connection timed out (errno " << ETIMEDOUT
+                                                                       << ")");
+            close(new_fd);
+            return;
+        }
+        if (poll_rc < 0)
+        {
+            int err = errno;
+            FSS_LOG_WARN(log_component, "Could not reach dump1090 at " << this->addr << ":" << this->port << ": "
+                                                                       << std::system_category().message(err)
+                                                                       << " (errno " << err << ")");
+            close(new_fd);
+            return;
+        }
+        /* poll() signalled writable: check whether the connect actually succeeded. */
+        int so_err = 0;
+        socklen_t so_err_len = sizeof(so_err);
+        if (getsockopt(new_fd, SOL_SOCKET, SO_ERROR, &so_err, &so_err_len) < 0 || so_err != 0)
+        {
+            int err = (so_err != 0) ? so_err : errno;
+            FSS_LOG_WARN(log_component, "Could not reach dump1090 at " << this->addr << ":" << this->port << ": "
+                                                                       << std::system_category().message(err)
+                                                                       << " (errno " << err << ")");
+            close(new_fd);
+            return;
+        }
+    }
+
+    /* Connection succeeded. Restore blocking mode so the existing recv() loop
+     * in processMessages() works unchanged. */
+    if (!set_nonblocking(new_fd, false))
+    {
+        int err = errno;
+        FSS_LOG_WARN(log_component, "Failed to restore blocking mode: " << std::system_category().message(err)
+                                                                        << " (errno " << err << ")");
+        close(new_fd);
+        return;
+    }
+
+    this->fd = new_fd;
     this->retry_delay = this->retry_delay_start;
 
     this->recv_thread = std::thread(recv_adsb_thread, this);

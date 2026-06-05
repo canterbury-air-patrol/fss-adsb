@@ -96,6 +96,7 @@ private:
     void connect_to_dump1090();
     static constexpr uint64_t retry_delay_start = 1000;
     static constexpr uint64_t retry_delay_cap = 30000;
+    static constexpr int connect_timeout_ms = 5000;
     uint64_t retry_delay{retry_delay_start};
 public:
     dump1090(std::string t_addr, uint16_t t_port);
