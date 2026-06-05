@@ -105,5 +105,6 @@ public:
     void disconnect();
 #ifdef FSS_ADSB_TESTING
     void test_processMessage(const std::string &msg) { processMessage(msg); }
+    auto test_isConnected() -> bool { return this->fd != -1; }
 #endif
 };
