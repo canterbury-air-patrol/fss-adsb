@@ -1,7 +1,15 @@
 #include "catch.hpp"
 
+#include <chrono>
 #include <optional>
 #include <string>
+#include <thread>
+#include <utility>
+
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #include "../args.hpp"
 #include "../dump1090.hpp"
@@ -47,6 +55,42 @@ std::string makeMsg(const std::string &transmissionType, const std::string &addr
     return "MSG," + transmissionType + ",111,11111," + addr + ",111111," +
            "2024/01/01,00:00:00.000,2024/01/01,00:00:00.000," + callsign + "," + altitude + "," + gs + "," + track +
            "," + lat + "," + lon + "," + vrate + "," + squawk + "," + ",,,";
+}
+
+// Open a listening TCP socket on an ephemeral loopback port. Returns the
+// listening fd and the port it bound to.
+std::pair<int, uint16_t> open_loopback_listener()
+{
+    int lfd = socket(AF_INET, SOCK_STREAM, 0);
+    REQUIRE(lfd >= 0);
+    int yes = 1;
+    setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = 0;
+    REQUIRE(bind(lfd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == 0);
+    REQUIRE(listen(lfd, 4) == 0);
+
+    socklen_t len = sizeof(addr);
+    REQUIRE(getsockname(lfd, reinterpret_cast<sockaddr *>(&addr), &len) == 0);
+    return {lfd, ntohs(addr.sin_port)};
+}
+
+// Poll a predicate until it holds or the timeout expires.
+template<typename Predicate> bool wait_for(Predicate pred, std::chrono::milliseconds timeout)
+{
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        if (pred())
+        {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return pred();
 }
 
 } // namespace
@@ -259,4 +303,47 @@ TEST_CASE("parse_port", "[args]")
     CHECK_FALSE(args::parse_port("30003x")); // trailing garbage
     CHECK_FALSE(args::parse_port("abc"));    // non-numeric
     CHECK_FALSE(args::parse_port("-1"));     // negative
+}
+
+// ---------------------------------------------------------------------------
+// Connection lifecycle
+// ---------------------------------------------------------------------------
+
+TEST_CASE("dump1090 reconnects after a dropped connection", "[reconnect]")
+{
+    auto [listen_fd, port] = open_loopback_listener();
+
+    g_captured.reset();
+    g_call_count = 0;
+
+    dump1090 dut{"127.0.0.1", port};
+    dut.registerCB(capture_cb);
+
+    // The constructor's connect() completes via the listen backlog, so the
+    // client is connected even before we accept it.
+    int conn = accept(listen_fd, nullptr, nullptr);
+    REQUIRE(conn >= 0);
+    REQUIRE(dut.test_isConnected());
+
+    // Drop it from the server side: the receive thread sees recv()==0, sets fd
+    // to -1 and returns, leaving its std::thread joinable.
+    close(conn);
+    REQUIRE(wait_for([&] { return !dut.test_isConnected(); }, std::chrono::seconds(2)));
+
+    // Regression for the std::terminate() on reconnect: move-assigning a new
+    // std::thread onto the still-joinable one used to abort. It must reconnect.
+    dut.reconnect();
+    int conn2 = accept(listen_fd, nullptr, nullptr);
+    REQUIRE(conn2 >= 0);
+    REQUIRE(dut.test_isConnected());
+
+    // And the reconnected socket's receive path still delivers messages.
+    std::string line = makeMsg("1", "ABC123", "QFA123") + "\n";
+    REQUIRE(write(conn2, line.data(), line.size()) == static_cast<ssize_t>(line.size()));
+    REQUIRE(wait_for([] { return g_call_count >= 1; }, std::chrono::seconds(2)));
+    CHECK(g_captured->getICAOAddress() == 0xABC123);
+
+    dut.disconnect();
+    close(conn2);
+    close(listen_fd);
 }
