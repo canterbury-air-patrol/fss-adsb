@@ -89,7 +89,7 @@ auto convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_s
     {
         struct addrinfo *ai = nullptr;
 
-        if (getaddrinfo(addr.c_str(), nullptr, nullptr, &ai) == 0)
+        if (getaddrinfo(addr.c_str(), nullptr, nullptr, &ai) == 0 && ai != nullptr)
         {
             if (ai->ai_addr != nullptr && ai->ai_addrlen <= sizeof(struct sockaddr_storage))
             {
