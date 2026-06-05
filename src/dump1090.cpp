@@ -91,11 +91,13 @@ auto convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_s
 
         if (getaddrinfo(addr.c_str(), nullptr, nullptr, &ai) == 0)
         {
-            memcpy(sa, ai->ai_addr, ai->ai_addrlen);
-            family = ai->ai_family;
+            if (ai->ai_addr != nullptr && ai->ai_addrlen <= sizeof(struct sockaddr_storage))
+            {
+                memcpy(sa, ai->ai_addr, ai->ai_addrlen);
+                family = ai->ai_family;
+            }
+            freeaddrinfo(ai);
         }
-
-        freeaddrinfo(ai);
     }
 
     switch (family)
