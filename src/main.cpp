@@ -134,13 +134,13 @@ auto main(int argc, char *argv[]) -> int
         return EXIT_FAILURE;
     }
 
-    auto dump1090_port = parse_port(argv[2]);
+    auto dump1090_port = args::parse_port(argv[2]);
     if (!dump1090_port)
     {
         std::cerr << "Invalid dump1090 port '" << argv[2] << "' (must be 1-65535)\n";
         return EXIT_FAILURE;
     }
-    auto fss_port = parse_port(argv[4]);
+    auto fss_port = args::parse_port(argv[4]);
     if (!fss_port)
     {
         std::cerr << "Invalid FSS port '" << argv[4] << "' (must be 1-65535)\n";

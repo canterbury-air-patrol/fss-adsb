@@ -4,11 +4,14 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <system_error>
+
+namespace args {
 
 /* Parse a TCP port (1-65535) from text, rejecting non-numeric, out-of-range and
  * trailing-garbage input. Takes a string_view (no allocation for argv) and uses
  * from_chars, so it neither throws nor needs a null terminator. */
-inline auto parse_port(std::string_view arg) -> std::optional<uint16_t>
+[[nodiscard]] inline auto parse_port(std::string_view arg) -> std::optional<uint16_t>
 {
     uint16_t value = 0;
     const char *begin = arg.data();
@@ -20,3 +23,5 @@ inline auto parse_port(std::string_view arg) -> std::optional<uint16_t>
     }
     return value;
 }
+
+} // namespace args
