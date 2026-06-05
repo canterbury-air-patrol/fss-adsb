@@ -295,10 +295,15 @@ void dump1090::reconnect()
 
 void dump1090::disconnect()
 {
-    if (this->fd != -1)
+    /* Take the fd atomically so we close it exactly once even if the receive
+     * thread clears it concurrently. shutdown() before close() is essential: a
+     * bare close() does not wake a thread blocked in recv(), so the join()
+     * below would hang. shutdown() makes that recv() return 0. */
+    int cur = this->fd.exchange(-1);
+    if (cur != -1)
     {
-        close(this->fd);
-        this->fd = -1;
+        shutdown(cur, SHUT_RDWR);
+        close(cur);
     }
     if (this->recv_thread.joinable())
     {
