@@ -248,15 +248,15 @@ TEST_CASE("ADSBData::isStale", "[stale]")
 
 TEST_CASE("parse_port", "[args]")
 {
-    CHECK(parse_port("1") == 1);
-    CHECK(parse_port("30003") == 30003);
-    CHECK(parse_port("65535") == 65535);
+    CHECK(args::parse_port("1") == 1);
+    CHECK(args::parse_port("30003") == 30003);
+    CHECK(args::parse_port("65535") == 65535);
 
-    CHECK_FALSE(parse_port("0"));      // below range
-    CHECK_FALSE(parse_port("65536"));  // above range
-    CHECK_FALSE(parse_port("99999"));  // above range
-    CHECK_FALSE(parse_port(""));       // empty
-    CHECK_FALSE(parse_port("30003x")); // trailing garbage
-    CHECK_FALSE(parse_port("abc"));    // non-numeric
-    CHECK_FALSE(parse_port("-1"));     // negative
+    CHECK_FALSE(args::parse_port("0"));      // below range
+    CHECK_FALSE(args::parse_port("65536"));  // above range
+    CHECK_FALSE(args::parse_port("99999"));  // above range
+    CHECK_FALSE(args::parse_port(""));       // empty
+    CHECK_FALSE(args::parse_port("30003x")); // trailing garbage
+    CHECK_FALSE(args::parse_port("abc"));    // non-numeric
+    CHECK_FALSE(args::parse_port("-1"));     // negative
 }
