@@ -21,10 +21,6 @@
 constexpr const char *log_component = "adsb";
 
 std::shared_ptr<fss_reporter_client> fss;
-/* Serialises access to the FSS client: reportAircraft() runs on the dump1090
- * receive thread while attemptReconnect() runs on the main thread, and the
- * client does no locking of its own (both touch its server list). */
-std::mutex fss_lock;
 
 bool running = true;
 
@@ -88,7 +84,6 @@ void handle_adsb_data(ADSBData adsb)
         FSS_LOG_DEBUG(log_component, "Reporting position for " << std::uppercase << std::hex
                                                                << aircraft->getICAOAddress() << " ("
                                                                << aircraft->getCallsign() << ")");
-        std::scoped_lock<std::mutex> fss_lk(fss_lock);
         fss->reportAircraft(
             adsb.getPosition().getLatitude(), adsb.getPosition().getLongitude(), adsb.getAltitude(),
             adsb_units::deg_to_centideg(aircraft->getHeading()), adsb_units::knots_to_cm_per_s(aircraft->getSpeed()),
@@ -170,10 +165,7 @@ auto main(int argc, char *argv[]) -> int
     {
         sleep(1);
         dumper.reconnect();
-        {
-            std::scoped_lock<std::mutex> fss_lk(fss_lock);
-            fss->attemptReconnect();
-        }
+        fss->attemptReconnect();
         if (++seconds_elapsed >= evict_interval_secs)
         {
             seconds_elapsed = 0;
