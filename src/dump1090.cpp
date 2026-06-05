@@ -302,7 +302,15 @@ void dump1090::disconnect()
     int cur = this->fd.exchange(-1);
     if (cur != -1)
     {
-        shutdown(cur, SHUT_RDWR);
+        /* ENOTCONN just means the peer already went away (the recv thread has
+         * seen the drop), which is fine; anything else is worth surfacing since
+         * it could leave the recv thread blocked and the join() below hanging. */
+        if (shutdown(cur, SHUT_RDWR) != 0 && errno != ENOTCONN)
+        {
+            int err = errno;
+            FSS_LOG_WARN(log_component,
+                         "shutdown() failed: " << std::system_category().message(err) << " (errno " << err << ")");
+        }
         close(cur);
     }
     if (this->recv_thread.joinable())
