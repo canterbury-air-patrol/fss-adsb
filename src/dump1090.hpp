@@ -100,6 +100,13 @@ private:
     uint64_t retry_delay{retry_delay_start};
 public:
     dump1090(std::string t_addr, uint16_t t_port);
+    /* Owns a recv thread and an atomic fd: not copyable or movable. The atomic
+     * already makes it so; spell it out so the user-declared destructor doesn't
+     * silently change which special members are generated. */
+    dump1090(dump1090 &) = delete;
+    dump1090(dump1090 &&) = delete;
+    auto operator=(dump1090 &) -> dump1090 & = delete;
+    auto operator=(dump1090 &&) -> dump1090 & = delete;
     ~dump1090();
     void reconnect();
     void processMessages();
