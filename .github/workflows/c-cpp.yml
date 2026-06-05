@@ -20,14 +20,30 @@ jobs:
           autotools-dev pkg-config \
           libjsoncpp-dev libgnutls28-dev libecpg-dev
 
+    - name: Resolve flight-safety-system revision
+      id: fss-rev
+      run: |
+        echo "sha=$(git ls-remote https://github.com/canterbury-air-patrol/flight-safety-system.git refs/heads/develop | cut -f1)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache flight-safety-system build
+      id: cache-fss
+      uses: actions/cache@v4
+      with:
+        path: /tmp/fss
+        key: fss-${{ runner.os }}-${{ steps.fss-rev.outputs.sha }}
+
     - name: Build and install flight-safety-system
       run: |
-        git clone --branch develop --depth 1 \
-          https://github.com/canterbury-air-patrol/flight-safety-system.git /tmp/fss
-        cd /tmp/fss
-        ./autogen.sh
-        ./configure
-        make -j$(nproc)
+        if [ "${{ steps.cache-fss.outputs.cache-hit }}" != "true" ]; then
+          git clone --branch develop --depth 1 \
+            https://github.com/canterbury-air-patrol/flight-safety-system.git /tmp/fss
+          cd /tmp/fss
+          ./autogen.sh
+          ./configure
+          make -j$(nproc)
+        else
+          cd /tmp/fss
+        fi
         sudo make install
         sudo ldconfig
 
@@ -62,14 +78,30 @@ jobs:
         python3 -m venv /tmp/clang-format-venv
         /tmp/clang-format-venv/bin/pip install -q clang-format==22.1.5
 
+    - name: Resolve flight-safety-system revision
+      id: fss-rev
+      run: |
+        echo "sha=$(git ls-remote https://github.com/canterbury-air-patrol/flight-safety-system.git refs/heads/develop | cut -f1)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache flight-safety-system build
+      id: cache-fss
+      uses: actions/cache@v4
+      with:
+        path: /tmp/fss
+        key: fss-${{ runner.os }}-${{ steps.fss-rev.outputs.sha }}
+
     - name: Build and install flight-safety-system
       run: |
-        git clone --branch develop --depth 1 \
-          https://github.com/canterbury-air-patrol/flight-safety-system.git /tmp/fss
-        cd /tmp/fss
-        ./autogen.sh
-        ./configure
-        make -j$(nproc)
+        if [ "${{ steps.cache-fss.outputs.cache-hit }}" != "true" ]; then
+          git clone --branch develop --depth 1 \
+            https://github.com/canterbury-air-patrol/flight-safety-system.git /tmp/fss
+          cd /tmp/fss
+          ./autogen.sh
+          ./configure
+          make -j$(nproc)
+        else
+          cd /tmp/fss
+        fi
         sudo make install
         sudo ldconfig
 
