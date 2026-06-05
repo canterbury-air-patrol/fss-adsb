@@ -277,6 +277,16 @@ dump1090::dump1090(std::string t_addr, uint16_t t_port) : addr(std::move(t_addr)
     this->connect_to_dump1090();
 }
 
+/* Every connect failure logs the same line, so keep the formatting in one
+ * place. system_category().message() renders the errno text (e.g. ETIMEDOUT
+ * becomes "Connection timed out"). */
+static void log_unreachable(const std::string &addr, uint16_t port, int err)
+{
+    FSS_LOG_WARN(log_component, "Could not reach dump1090 at " << addr << ":" << port << ": "
+                                                               << std::system_category().message(err) << " (errno "
+                                                               << err << ")");
+}
+
 void dump1090::connect_to_dump1090()
 {
     /* A previous receive thread may have already exited (connection dropped, fd
@@ -317,10 +327,7 @@ void dump1090::connect_to_dump1090()
     int rc = connect(new_fd, as_sockaddr(&remote), addrlen);
     if (rc < 0 && errno != EINPROGRESS)
     {
-        int err = errno;
-        FSS_LOG_WARN(log_component, "Could not reach dump1090 at " << this->addr << ":" << this->port << ": "
-                                                                   << std::system_category().message(err) << " (errno "
-                                                                   << err << ")");
+        log_unreachable(this->addr, this->port, errno);
         close(new_fd);
         return;
     }
@@ -335,18 +342,13 @@ void dump1090::connect_to_dump1090()
         if (poll_rc == 0)
         {
             /* Timed out — treat as unreachable. */
-            FSS_LOG_WARN(log_component, "Could not reach dump1090 at " << this->addr << ":" << this->port
-                                                                       << ": Connection timed out (errno " << ETIMEDOUT
-                                                                       << ")");
+            log_unreachable(this->addr, this->port, ETIMEDOUT);
             close(new_fd);
             return;
         }
         if (poll_rc < 0)
         {
-            int err = errno;
-            FSS_LOG_WARN(log_component, "Could not reach dump1090 at " << this->addr << ":" << this->port << ": "
-                                                                       << std::system_category().message(err)
-                                                                       << " (errno " << err << ")");
+            log_unreachable(this->addr, this->port, errno);
             close(new_fd);
             return;
         }
@@ -355,10 +357,7 @@ void dump1090::connect_to_dump1090()
         socklen_t so_err_len = sizeof(so_err);
         if (getsockopt(new_fd, SOL_SOCKET, SO_ERROR, &so_err, &so_err_len) < 0 || so_err != 0)
         {
-            int err = (so_err != 0) ? so_err : errno;
-            FSS_LOG_WARN(log_component, "Could not reach dump1090 at " << this->addr << ":" << this->port << ": "
-                                                                       << std::system_category().message(err)
-                                                                       << " (errno " << err << ")");
+            log_unreachable(this->addr, this->port, (so_err != 0) ? so_err : errno);
             close(new_fd);
             return;
         }
