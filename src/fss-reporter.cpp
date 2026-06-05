@@ -1,3 +1,4 @@
+#include <mutex>
 #include <utility>
 
 #include <fss-transport.hpp>
@@ -20,7 +21,14 @@ void fss_reporter_client::reportAircraft(double t_latitude, double t_longitude, 
     auto msg = std::make_shared<flight_safety_system::transport::fss_message_position_report>(
         t_latitude, t_longitude, t_altitude, t_heading, t_hor_vel, t_ver_vel, t_icao_address, t_callsign, t_squawk,
         t_tslc, t_flags, t_alt_type, t_emitter_type, t_timestamp);
+    const std::scoped_lock lock(this->client_lock);
     this->sendMsgAll(msg);
+}
+
+void fss_reporter_client::attemptReconnect()
+{
+    const std::scoped_lock lock(this->client_lock);
+    flight_safety_system::client_ssl::fss_client::attemptReconnect();
 }
 
 fss_reporter_server::fss_reporter_server(fss_reporter_client *t_client, const std::string &t_address, uint16_t t_port,
