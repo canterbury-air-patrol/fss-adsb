@@ -22,11 +22,11 @@ constexpr const char *log_component = "adsb";
 
 std::shared_ptr<fss_reporter_client> fss;
 
-bool running = true;
+volatile std::sig_atomic_t running = 1;
 
 void sigIntHandler(__attribute__((unused)) int signum)
 {
-    running = false;
+    running = 0;
 }
 
 std::map<uint32_t, std::shared_ptr<ADSBData>> known_aircraft;
