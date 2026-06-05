@@ -12,6 +12,7 @@
 #include "fss.hpp"
 #include <fss-log.hpp>
 
+#include "args.hpp"
 #include "dump1090.hpp"
 #include "fss-reporter.hpp"
 #include "units.hpp"
@@ -123,20 +124,6 @@ void evict_stale_aircraft()
     }
 }
 
-/* Parse a TCP port, rejecting non-numeric, out-of-range and trailing-garbage
- * input (std::stoi would throw, and silently truncated to uint16_t). */
-static auto parse_port(const std::string &arg) -> std::optional<uint16_t>
-{
-    constexpr int base10 = 10;
-    char *end = nullptr;
-    unsigned long value = std::strtoul(arg.c_str(), &end, base10);
-    if (end == arg.c_str() || *end != '\0' || value < 1 || value > UINT16_MAX)
-    {
-        return std::nullopt;
-    }
-    return static_cast<uint16_t>(value);
-}
-
 auto main(int argc, char *argv[]) -> int
 {
     constexpr int required_args = 8;
@@ -148,10 +135,15 @@ auto main(int argc, char *argv[]) -> int
     }
 
     auto dump1090_port = parse_port(argv[2]);
-    auto fss_port = parse_port(argv[4]);
-    if (!dump1090_port || !fss_port)
+    if (!dump1090_port)
     {
-        std::cerr << "Invalid port number (must be 1-65535)\n";
+        std::cerr << "Invalid dump1090 port '" << argv[2] << "' (must be 1-65535)\n";
+        return EXIT_FAILURE;
+    }
+    auto fss_port = parse_port(argv[4]);
+    if (!fss_port)
+    {
+        std::cerr << "Invalid FSS port '" << argv[4] << "' (must be 1-65535)\n";
         return EXIT_FAILURE;
     }
 
