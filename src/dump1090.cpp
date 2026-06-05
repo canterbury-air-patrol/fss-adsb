@@ -1,5 +1,6 @@
 #include "dump1090.hpp"
 
+#include <cerrno>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -240,7 +241,8 @@ void dump1090::connect_to_dump1090()
     int new_fd = socket(remote.ss_family == AF_INET ? PF_INET : PF_INET6, SOCK_STREAM, IPPROTO_TCP);
     if (new_fd == -1)
     {
-        perror("Failed to create socket");
+        int err = errno;
+        FSS_LOG_WARN("dump1090", "Failed to create socket: " << std::strerror(err) << " (errno " << err << ")");
         return;
     }
     this->fd = new_fd;
@@ -248,8 +250,9 @@ void dump1090::connect_to_dump1090()
     if (connect(this->fd, as_sockaddr(&remote),
                 remote.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6)) < 0)
     {
-        perror("Failed to connect");
-        FSS_LOG_WARN("dump1090", "Could not reach dump1090 at " << this->addr << ":" << this->port);
+        int err = errno;
+        FSS_LOG_WARN("dump1090", "Could not reach dump1090 at " << this->addr << ":" << this->port << ": "
+                                                                << std::strerror(err) << " (errno " << err << ")");
         close(this->fd);
         this->fd = -1;
         return;
