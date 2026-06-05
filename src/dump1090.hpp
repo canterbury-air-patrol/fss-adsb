@@ -3,18 +3,7 @@
 #include <thread>
 #include <cstdint>
 
-class Point {
-private:
-    bool valid{false};
-    double latitude{0.0};
-    double longitude{0.0};
-public:
-    Point() = default;
-    Point(double lat, double lng) : valid(true), latitude(lat), longitude(lng) {};
-    auto getLatitude() -> double { return this->latitude; };
-    auto getLongitude() -> double { return this->longitude; };
-    auto getValid() -> bool { return this->valid; };
-};
+#include "point.hpp"
 
 class ADSBData {
 private:
