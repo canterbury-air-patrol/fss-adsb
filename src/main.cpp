@@ -82,7 +82,8 @@ void handle_adsb_data(ADSBData adsb)
         constexpr uint32_t valid_vertvel = 128;
         /* ADSB_FLAGS_SOURCE_UAT = 32768 is the only source flag; its absence means 1090ES */
 
-        FSS_LOG_DEBUG("adsb", "Reporting position");
+        FSS_LOG_DEBUG("adsb", "Reporting position for " << std::uppercase << std::hex << aircraft->getICAOAddress()
+                                                        << " (" << aircraft->getCallsign() << ")");
         std::scoped_lock<std::mutex> fss_lk(fss_lock);
         fss->reportAircraft(
             adsb.getPosition().getLatitude(), adsb.getPosition().getLongitude(), adsb.getAltitude(),
