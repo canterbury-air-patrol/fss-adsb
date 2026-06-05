@@ -338,7 +338,21 @@ void dump1090::connect_to_dump1090()
         struct pollfd pfd = {};
         pfd.fd = new_fd;
         pfd.events = POLLOUT;
-        int poll_rc = poll(&pfd, 1, connect_timeout_ms);
+        /* poll() can be interrupted by a signal (we install SIGINT/SIGTERM
+         * handlers); retry on EINTR against the original deadline rather than
+         * treating it as a hard connect failure. */
+        uint64_t deadline = flight_safety_system::fss_current_timestamp() + connect_timeout_ms;
+        int poll_rc = 0;
+        for (;;)
+        {
+            uint64_t now = flight_safety_system::fss_current_timestamp();
+            int remaining = now >= deadline ? 0 : static_cast<int>(deadline - now);
+            poll_rc = poll(&pfd, 1, remaining);
+            if (poll_rc >= 0 || errno != EINTR)
+            {
+                break;
+            }
+        }
         if (poll_rc == 0)
         {
             /* Timed out — treat as unreachable. */
