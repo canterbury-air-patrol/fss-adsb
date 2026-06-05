@@ -7,6 +7,7 @@
 #include <string>
 #include <sstream>
 #include <iostream>
+#include <system_error>
 #include <vector>
 
 #include <sys/socket.h>
@@ -250,7 +251,8 @@ void dump1090::connect_to_dump1090()
     if (new_fd == -1)
     {
         int err = errno;
-        FSS_LOG_WARN(log_component, "Failed to create socket: " << std::strerror(err) << " (errno " << err << ")");
+        FSS_LOG_WARN(log_component,
+                     "Failed to create socket: " << std::system_category().message(err) << " (errno " << err << ")");
         return;
     }
     this->fd = new_fd;
@@ -260,7 +262,8 @@ void dump1090::connect_to_dump1090()
     {
         int err = errno;
         FSS_LOG_WARN(log_component, "Could not reach dump1090 at " << this->addr << ":" << this->port << ": "
-                                                                   << std::strerror(err) << " (errno " << err << ")");
+                                                                   << std::system_category().message(err) << " (errno "
+                                                                   << err << ")");
         close(this->fd);
         this->fd = -1;
         return;
