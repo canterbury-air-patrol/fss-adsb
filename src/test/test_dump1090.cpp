@@ -389,3 +389,23 @@ TEST_CASE("dump1090 reconnects after a dropped connection", "[reconnect]")
     close(conn2);
     close(listen_fd);
 }
+
+TEST_CASE("dump1090 destructor cleans up a live connection", "[reconnect]")
+{
+    auto [listen_fd, port] = open_loopback_listener();
+    int conn = -1;
+    {
+        dump1090 dut{"127.0.0.1", port};
+        conn = accept(listen_fd, nullptr, nullptr);
+        REQUIRE(conn >= 0);
+        REQUIRE(dut.test_isConnected());
+        // leave scope: ~dump1090() must shutdown() the socket, wake and join
+        // the recv thread, and return without std::terminate() or hanging.
+    }
+    if (conn >= 0)
+    {
+        close(conn);
+    }
+    close(listen_fd);
+    SUCCEED("destructor returned without terminate or hang");
+}

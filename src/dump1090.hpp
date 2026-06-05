@@ -100,6 +100,7 @@ private:
     uint64_t retry_delay{retry_delay_start};
 public:
     dump1090(std::string t_addr, uint16_t t_port);
+    ~dump1090();
     void reconnect();
     void processMessages();
     void registerCB(notify_dump1090_adsb_data_cb t_cb) { this->adsb_cb = t_cb; };

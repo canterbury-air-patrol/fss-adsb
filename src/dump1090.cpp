@@ -425,3 +425,8 @@ void dump1090::disconnect()
         this->recv_thread.join();
     }
 }
+
+dump1090::~dump1090()
+{
+    this->disconnect();
+}

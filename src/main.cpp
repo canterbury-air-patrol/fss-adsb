@@ -147,8 +147,9 @@ auto main(int argc, char *argv[]) -> int
         return EXIT_FAILURE;
     }
 
-    /* Watch out for sigint */
+    /* Watch out for sigint and systemd's default stop signal */
     signal(SIGINT, sigIntHandler);
+    signal(SIGTERM, sigIntHandler);
     /* Ignore SIGPIPE */
     signal(SIGPIPE, SIG_IGN);
 
