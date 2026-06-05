@@ -85,8 +85,8 @@ void handle_adsb_data(ADSBData adsb)
                                                                << aircraft->getICAOAddress() << " ("
                                                                << aircraft->getCallsign() << ")");
         fss->reportAircraft(
-            adsb.getPosition().getLatitude(), adsb.getPosition().getLongitude(), adsb.getAltitude(),
-            adsb_units::deg_to_centideg(aircraft->getHeading()), adsb_units::knots_to_cm_per_s(aircraft->getSpeed()),
+            adsb.getPosition(), adsb.getAltitude(), adsb_units::deg_to_centideg(aircraft->getHeading()),
+            adsb_units::knots_to_cm_per_s(aircraft->getSpeed()),
             adsb_units::ft_per_min_to_cm_per_s(aircraft->getVertVel()), aircraft->getICAOAddress(),
             aircraft->getCallsign(), aircraft->getSquawk(),
             /* Time since last contact (0), we just saw it now */

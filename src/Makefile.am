@@ -7,7 +7,7 @@ AM_CXXFLAGS=
 AM_CXXFLAGS+= -pthread -Wno-address-of-packed-member
 AM_CXXFLAGS+= -Wall -Wextra -Wshadow -Wnon-virtual-dtor -Wduplicated-cond -Wmisleading-indentation -Wlogical-op -Wformat=2 -Weffc++
 
-fss_adsb_SOURCES = main.cpp dump1090.cpp dump1090.hpp fss-reporter.cpp fss-reporter.hpp units.hpp args.hpp
+fss_adsb_SOURCES = main.cpp dump1090.cpp dump1090.hpp fss-reporter.cpp fss-reporter.hpp units.hpp args.hpp point.hpp
 
 fss_adsb_CXXFLAGS = $(AM_CXXFLAGS) $(FSS_CLIENT_CFLAGS) $(FSS_CLIENT_SSL_CFLAGS) $(SMM_ASSET_CFLAGS)
 fss_absb_CFLAGS = $(AM_CFLAGS) $(FSS_CLIENT_CFLAGS) $(FSS_CLIENT_SSL_CFLAGS) $(SMM_ASSET_CFLAGS)
