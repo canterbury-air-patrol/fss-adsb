@@ -99,6 +99,11 @@ auto convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_s
     return family != AF_UNSPEC;
 }
 
+/* 0-based column indices into the comma-separated SBS-1 BaseStation (port
+ * 30003) record. The order is fixed by that wire format — do NOT reorder these
+ * to "tidy" them, or fields will be misread. Reference field numbers are
+ * 1-based (e.g. latitude is field 15, longitude 16), so these are one less.
+ * See http://woodair.net/sbs/article/barebones42_socket_data.htm */
 using sbs1_fields = enum sbs1_fields_e : std::uint8_t {
     sbs1_field_type = 0,
     sbs1_field_id = 1,
