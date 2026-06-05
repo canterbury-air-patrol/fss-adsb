@@ -1,5 +1,6 @@
 #include "dump1090.hpp"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdint>
 #include <cstdlib>
@@ -149,9 +150,34 @@ static auto sbs1_to_ul(const std::string &s, int base = 10) -> unsigned long
     return std::strtoul(s.c_str(), nullptr, base);
 }
 
-static auto sbs1_to_l(const std::string &s) -> long
+/* Parse a signed altitude string and clamp to [0, UINT32_MAX].
+ * Negative values (e.g. "-100" for Schiphol at -13 ft MSL) become 0 rather
+ * than wrapping to a huge uint32 via strtoul. */
+static auto sbs1_to_altitude(const std::string &s) -> uint32_t
 {
-    return std::strtol(s.c_str(), nullptr, 10);
+    long v = std::strtol(s.c_str(), nullptr, 10);
+    long clamped = std::max(v, 0L);
+    return static_cast<uint32_t>(
+        std::min(clamped, static_cast<long>(UINT32_MAX))); // NOLINT(cppcoreguidelines-narrowing-conversions)
+}
+
+/* Parse a vertical-rate string and clamp to [INT16_MIN, INT16_MAX].
+ * Out-of-range garbage like "70000" must not silently wrap via a cast. */
+static auto sbs1_to_vertrate(const std::string &s) -> int16_t
+{
+    long v = std::strtol(s.c_str(), nullptr, 10);
+    return static_cast<int16_t>(
+        std::clamp(v, static_cast<long>(INT16_MIN),
+                   static_cast<long>(INT16_MAX))); // NOLINT(cppcoreguidelines-narrowing-conversions)
+}
+
+/* Parse a heading string and clamp to [0, UINT16_MAX].
+ * Values > 65535 must not silently wrap via implicit uint16_t truncation. */
+static auto sbs1_to_heading(const std::string &s) -> uint16_t
+{
+    unsigned long v = std::strtoul(s.c_str(), nullptr, 10);
+    return static_cast<uint16_t>(
+        std::min(v, static_cast<unsigned long>(UINT16_MAX))); // NOLINT(cppcoreguidelines-narrowing-conversions)
 }
 
 void dump1090::processMessage(const std::string &t_msg)
@@ -179,12 +205,12 @@ void dump1090::processMessage(const std::string &t_msg)
                     adsb.setPosition(Point(std::strtod(data[sbs1_field_lat].c_str(), nullptr),
                                            std::strtod(data[sbs1_field_lng].c_str(), nullptr)));
                 }
-                adsb.setAltitude(sbs1_to_ul(data[sbs1_field_altitude]));
+                adsb.setAltitude(sbs1_to_altitude(data[sbs1_field_altitude]));
                 break;
             case sbs1_id_airborne_vel:
                 adsb.setSpeed(sbs1_to_ul(data[sbs1_field_groundspeed]));
-                adsb.setHeading(sbs1_to_ul(data[sbs1_field_track]));
-                adsb.setVertVel(static_cast<int16_t>(sbs1_to_l(data[sbs1_field_vertrate])));
+                adsb.setHeading(sbs1_to_heading(data[sbs1_field_track]));
+                adsb.setVertVel(sbs1_to_vertrate(data[sbs1_field_vertrate]));
                 break;
             case sbs1_id_surveillence_id: adsb.setSquawk(sbs1_to_ul(data[sbs1_field_squawk])); break;
             case sbs1_id_surveillence_alt:

@@ -135,6 +135,40 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 4 (airborne vel) sets speed, heading a
     CHECK(g_captured->getVertVel() == -1024);
 }
 
+TEST_CASE_METHOD(ParserFixture, "MSG type 3 negative altitude clamps to 0", "[parser][clamp]")
+{
+    // Aircraft below sea level (e.g. Schiphol at -13 ft). strtoul would have
+    // returned ~ULONG_MAX-99; sbs1_to_altitude must clamp to 0.
+    feed(makeMsg("3", "A12345", "", "-100", "", "", "", ""));
+    REQUIRE(g_call_count == 1);
+    CHECK(g_captured->validAltitude());
+    CHECK(g_captured->getAltitude() == 0);
+}
+
+TEST_CASE_METHOD(ParserFixture, "MSG type 4 vert rate too high clamps to INT16_MAX", "[parser][clamp]")
+{
+    feed(makeMsg("4", "A12345", "", "", "0", "0", "", "", "70000"));
+    REQUIRE(g_call_count == 1);
+    CHECK(g_captured->validVertVel());
+    CHECK(g_captured->getVertVel() == INT16_MAX);
+}
+
+TEST_CASE_METHOD(ParserFixture, "MSG type 4 vert rate too low clamps to INT16_MIN", "[parser][clamp]")
+{
+    feed(makeMsg("4", "A12345", "", "", "0", "0", "", "", "-70000"));
+    REQUIRE(g_call_count == 1);
+    CHECK(g_captured->validVertVel());
+    CHECK(g_captured->getVertVel() == INT16_MIN);
+}
+
+TEST_CASE_METHOD(ParserFixture, "MSG type 4 heading > UINT16_MAX clamps to UINT16_MAX", "[parser][clamp]")
+{
+    feed(makeMsg("4", "A12345", "", "", "0", "70000", "", "", "0"));
+    REQUIRE(g_call_count == 1);
+    CHECK(g_captured->validHeading());
+    CHECK(g_captured->getHeading() == UINT16_MAX);
+}
+
 TEST_CASE_METHOD(ParserFixture, "MSG type 6 (surveillance id) sets squawk", "[parser][valid]")
 {
     feed(makeMsg("6", "A12345", "", "", "", "", "", "", "", "7700"));
@@ -179,8 +213,7 @@ TEST_CASE_METHOD(ParserFixture, "Empty numeric fields on type 3 parse as zero wi
     CHECK_FALSE(p.getValid());
 }
 
-TEST_CASE_METHOD(ParserFixture, "Type 3 with empty lat/lng but valid altitude leaves position unset",
-                 "[parser][empty]")
+TEST_CASE_METHOD(ParserFixture, "Type 3 with empty lat/lng but valid altitude leaves position unset", "[parser][empty]")
 {
     feed(makeMsg("3", "A12345", "", "35000", "", "", "", ""));
     REQUIRE(g_call_count == 1);
