@@ -21,11 +21,11 @@ stamp-h1
 .libs/
 test-driver
 
-# Test binaries and logs
+# Test binaries and logs (automake test harness output lives under src/)
 src/test_dump1090
-test-suite.log
-*.log
-*.trs
+src/test-suite.log
+src/*.log
+src/*.trs
 
 # Clang tooling
 clang-tidy.log
