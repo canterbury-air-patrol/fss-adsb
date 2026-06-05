@@ -3,6 +3,7 @@
 #include <optional>
 #include <string>
 
+#include "../args.hpp"
 #include "../dump1090.hpp"
 #include "../units.hpp"
 
@@ -38,23 +39,14 @@ struct ParserFixture {
 // Build a well-formed 22-field MSG record. Field layout matches the SBS-1
 // BaseStation format: indices per the sbs1_fields enum in dump1090.cpp.
 // Note the wire order is latitude (field 14) then longitude (field 15).
-std::string makeMsg(
-    const std::string &transmissionType,
-    const std::string &addr     = "A12345",
-    const std::string &callsign = "",
-    const std::string &altitude = "",
-    const std::string &gs       = "",
-    const std::string &track    = "",
-    const std::string &lat      = "",
-    const std::string &lon      = "",
-    const std::string &vrate    = "",
-    const std::string &squawk   = "")
+std::string makeMsg(const std::string &transmissionType, const std::string &addr = "A12345",
+                    const std::string &callsign = "", const std::string &altitude = "", const std::string &gs = "",
+                    const std::string &track = "", const std::string &lat = "", const std::string &lon = "",
+                    const std::string &vrate = "", const std::string &squawk = "")
 {
-    return "MSG," + transmissionType + ",111,11111," + addr + ",111111,"
-         + "2024/01/01,00:00:00.000,2024/01/01,00:00:00.000,"
-         + callsign + "," + altitude + "," + gs + "," + track + ","
-         + lat + "," + lon + "," + vrate + "," + squawk + ","
-         + ",,,";
+    return "MSG," + transmissionType + ",111,11111," + addr + ",111111," +
+           "2024/01/01,00:00:00.000,2024/01/01,00:00:00.000," + callsign + "," + altitude + "," + gs + "," + track +
+           "," + lat + "," + lon + "," + vrate + "," + squawk + "," + ",,,";
 }
 
 } // namespace
@@ -180,7 +172,8 @@ TEST_CASE_METHOD(ParserFixture, "Non-MSG record type is silently ignored", "[par
 // Unknown transmission types
 // ---------------------------------------------------------------------------
 
-TEST_CASE_METHOD(ParserFixture, "Unknown transmission type: no callback (default branch returns early)", "[parser][unknown]")
+TEST_CASE_METHOD(ParserFixture, "Unknown transmission type: no callback (default branch returns early)",
+                 "[parser][unknown]")
 {
     feed(makeMsg("99", "A12345"));
     CHECK(g_call_count == 0);
@@ -245,4 +238,23 @@ TEST_CASE("ADSBData::isStale", "[stale]")
     CHECK(a.isStale(1000 + window + 1, window));       // well past
     // Clock stepped backwards (now < last_seen): must not underflow to "stale".
     CHECK_FALSE(a.isStale(500, window));
+}
+
+// ---------------------------------------------------------------------------
+// Port parsing
+// ---------------------------------------------------------------------------
+
+TEST_CASE("parse_port", "[args]")
+{
+    CHECK(parse_port("1") == 1);
+    CHECK(parse_port("30003") == 30003);
+    CHECK(parse_port("65535") == 65535);
+
+    CHECK_FALSE(parse_port("0"));      // below range
+    CHECK_FALSE(parse_port("65536"));  // above range
+    CHECK_FALSE(parse_port("99999"));  // above range
+    CHECK_FALSE(parse_port(""));       // empty
+    CHECK_FALSE(parse_port("30003x")); // trailing garbage
+    CHECK_FALSE(parse_port("abc"));    // non-numeric
+    CHECK_FALSE(parse_port("-1"));     // negative
 }
