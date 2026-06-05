@@ -21,6 +21,9 @@
 
 constexpr int buffer_length = 2048;
 
+/* Log component/category for this module. */
+constexpr const char *log_component = "dump1090";
+
 /* Wrap the unavoidable sockaddr_storage punning casts in one place. */
 static auto as_sockaddr(struct sockaddr_storage *ss) -> struct sockaddr *
 {
@@ -166,7 +169,7 @@ void dump1090::processMessage(const std::string &t_msg)
                 /* Don't care about these messages */
                 break;
             default:
-                FSS_LOG_DEBUG("dump1090",
+                FSS_LOG_DEBUG(log_component,
                               "Ignoring message " << data[sbs1_field_id] << " from " << data[sbs1_field_address]);
                 return;
         }
@@ -242,7 +245,7 @@ void dump1090::connect_to_dump1090()
     if (new_fd == -1)
     {
         int err = errno;
-        FSS_LOG_WARN("dump1090", "Failed to create socket: " << std::strerror(err) << " (errno " << err << ")");
+        FSS_LOG_WARN(log_component, "Failed to create socket: " << std::strerror(err) << " (errno " << err << ")");
         return;
     }
     this->fd = new_fd;
@@ -251,8 +254,8 @@ void dump1090::connect_to_dump1090()
                 remote.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6)) < 0)
     {
         int err = errno;
-        FSS_LOG_WARN("dump1090", "Could not reach dump1090 at " << this->addr << ":" << this->port << ": "
-                                                                << std::strerror(err) << " (errno " << err << ")");
+        FSS_LOG_WARN(log_component, "Could not reach dump1090 at " << this->addr << ":" << this->port << ": "
+                                                                   << std::strerror(err) << " (errno " << err << ")");
         close(this->fd);
         this->fd = -1;
         return;

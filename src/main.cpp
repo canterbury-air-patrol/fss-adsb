@@ -17,6 +17,9 @@
 #include "fss-reporter.hpp"
 #include "units.hpp"
 
+/* Log component/category for this module. */
+constexpr const char *log_component = "adsb";
+
 std::shared_ptr<fss_reporter_client> fss;
 /* Serialises access to the FSS client: reportAircraft() runs on the dump1090
  * receive thread while attemptReconnect() runs on the main thread, and the
@@ -35,7 +38,7 @@ std::mutex known_aircraft_lock;
 
 void handle_adsb_data(ADSBData adsb)
 {
-    FSS_LOG_DEBUG("adsb", "ADSB Data for " << std::uppercase << std::hex << adsb.getICAOAddress());
+    FSS_LOG_DEBUG(log_component, "ADSB Data for " << std::uppercase << std::hex << adsb.getICAOAddress());
     std::unique_lock<std::mutex> lk(known_aircraft_lock);
     auto aircraft = known_aircraft[adsb.getICAOAddress()];
     if (aircraft == nullptr)
@@ -49,7 +52,7 @@ void handle_adsb_data(ADSBData adsb)
     {
         aircraft->setCallsign(adsb.getCallsign());
     }
-    FSS_LOG_DEBUG("adsb", "Callsign: " << aircraft->getCallsign());
+    FSS_LOG_DEBUG(log_component, "Callsign: " << aircraft->getCallsign());
     /* Update other fields */
     if (adsb.validAltitude())
     {
@@ -82,8 +85,9 @@ void handle_adsb_data(ADSBData adsb)
         constexpr uint32_t valid_vertvel = 128;
         /* ADSB_FLAGS_SOURCE_UAT = 32768 is the only source flag; its absence means 1090ES */
 
-        FSS_LOG_DEBUG("adsb", "Reporting position for " << std::uppercase << std::hex << aircraft->getICAOAddress()
-                                                        << " (" << aircraft->getCallsign() << ")");
+        FSS_LOG_DEBUG(log_component, "Reporting position for " << std::uppercase << std::hex
+                                                               << aircraft->getICAOAddress() << " ("
+                                                               << aircraft->getCallsign() << ")");
         std::scoped_lock<std::mutex> fss_lk(fss_lock);
         fss->reportAircraft(
             adsb.getPosition().getLatitude(), adsb.getPosition().getLongitude(), adsb.getAltitude(),
@@ -114,7 +118,7 @@ void evict_stale_aircraft()
     {
         if (it->second->isStale(now, stale_window_ms))
         {
-            FSS_LOG_INFO("adsb",
+            FSS_LOG_INFO(log_component,
                          "Evicting stale aircraft " << std::uppercase << std::hex << it->second->getICAOAddress());
             it = known_aircraft.erase(it);
         }
