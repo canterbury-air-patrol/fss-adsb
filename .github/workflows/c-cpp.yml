@@ -23,14 +23,20 @@ jobs:
     - name: Resolve flight-safety-system revision
       id: fss-rev
       run: |
-        echo "sha=$(git ls-remote https://github.com/canterbury-air-patrol/flight-safety-system.git refs/heads/develop | cut -f1)" >> "$GITHUB_OUTPUT"
+        set -euo pipefail
+        sha="$(git ls-remote https://github.com/canterbury-air-patrol/flight-safety-system.git refs/heads/develop | cut -f1)"
+        if [ -z "$sha" ]; then
+          echo "Failed to resolve flight-safety-system develop SHA" >&2
+          exit 1
+        fi
+        echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
     - name: Cache flight-safety-system build
       id: cache-fss
       uses: actions/cache@v4
       with:
         path: /tmp/fss
-        key: fss-${{ runner.os }}-${{ steps.fss-rev.outputs.sha }}
+        key: fss-${{ runner.os }}-${{ steps.fss-rev.outputs.sha }}-${{ hashFiles('.github/workflows/c-cpp.yml') }}
 
     - name: Build and install flight-safety-system
       run: |
@@ -81,14 +87,20 @@ jobs:
     - name: Resolve flight-safety-system revision
       id: fss-rev
       run: |
-        echo "sha=$(git ls-remote https://github.com/canterbury-air-patrol/flight-safety-system.git refs/heads/develop | cut -f1)" >> "$GITHUB_OUTPUT"
+        set -euo pipefail
+        sha="$(git ls-remote https://github.com/canterbury-air-patrol/flight-safety-system.git refs/heads/develop | cut -f1)"
+        if [ -z "$sha" ]; then
+          echo "Failed to resolve flight-safety-system develop SHA" >&2
+          exit 1
+        fi
+        echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
     - name: Cache flight-safety-system build
       id: cache-fss
       uses: actions/cache@v4
       with:
         path: /tmp/fss
-        key: fss-${{ runner.os }}-${{ steps.fss-rev.outputs.sha }}
+        key: fss-${{ runner.os }}-${{ steps.fss-rev.outputs.sha }}-${{ hashFiles('.github/workflows/c-cpp.yml') }}
 
     - name: Build and install flight-safety-system
       run: |
