@@ -215,6 +215,8 @@ TEST_CASE("degrees -> centidegrees", "[units]")
     CHECK(adsb_units::deg_to_centideg(359) == 35900);
     // Out-of-range heading clamps to UINT16_MAX instead of wrapping
     CHECK(adsb_units::deg_to_centideg(1000) == UINT16_MAX);
+    // 42949673 * 100 wraps uint32_t to 4; clamping must still see it as huge.
+    CHECK(adsb_units::deg_to_centideg(42949673) == UINT16_MAX);
 }
 
 // The conversions are constexpr: these fail to compile if that regresses.
