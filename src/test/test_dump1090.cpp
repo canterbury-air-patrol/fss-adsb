@@ -176,8 +176,17 @@ TEST_CASE_METHOD(ParserFixture, "Empty numeric fields on type 3 parse as zero wi
     REQUIRE(g_call_count == 1);
     CHECK(g_captured->getAltitude() == 0);
     Point p = g_captured->getPosition();
-    CHECK(p.getLatitude() == Approx(0.0));
-    CHECK(p.getLongitude() == Approx(0.0));
+    CHECK_FALSE(p.getValid());
+}
+
+TEST_CASE_METHOD(ParserFixture, "Type 3 with empty lat/lng but valid altitude leaves position unset",
+                 "[parser][empty]")
+{
+    feed(makeMsg("3", "A12345", "", "35000", "", "", "", ""));
+    REQUIRE(g_call_count == 1);
+    CHECK(g_captured->validAltitude());
+    CHECK(g_captured->getAltitude() == 35000);
+    CHECK_FALSE(g_captured->getPosition().getValid());
 }
 
 // ---------------------------------------------------------------------------

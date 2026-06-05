@@ -159,8 +159,11 @@ void dump1090::processMessage(const std::string &t_msg)
         {
             case sbs1_id_ident: adsb.setCallsign(data[sbs1_field_callsign]); break;
             case sbs1_id_airborne_pos:
-                adsb.setPosition(Point(std::strtod(data[sbs1_field_lat].c_str(), nullptr),
-                                       std::strtod(data[sbs1_field_lng].c_str(), nullptr)));
+                if (!data[sbs1_field_lat].empty() && !data[sbs1_field_lng].empty())
+                {
+                    adsb.setPosition(Point(std::strtod(data[sbs1_field_lat].c_str(), nullptr),
+                                           std::strtod(data[sbs1_field_lng].c_str(), nullptr)));
+                }
                 adsb.setAltitude(sbs1_to_ul(data[sbs1_field_altitude]));
                 break;
             case sbs1_id_airborne_vel:
