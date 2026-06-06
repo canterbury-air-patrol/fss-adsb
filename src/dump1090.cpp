@@ -207,7 +207,13 @@ void dump1090::processMessage(const std::string &t_msg)
                     adsb.setPosition(Point(std::strtod(data[sbs1_field_lat].c_str(), nullptr),
                                            std::strtod(data[sbs1_field_lng].c_str(), nullptr)));
                 }
-                adsb.setAltitude(sbs1_to_altitude(data[sbs1_field_altitude]));
+                /* Guard like lat/lng above: an empty altitude field parses to 0,
+                 * and setting it would mark altitude valid, reporting an aircraft
+                 * at 0 ft when its real altitude is simply absent from this MSG. */
+                if (!data[sbs1_field_altitude].empty())
+                {
+                    adsb.setAltitude(sbs1_to_altitude(data[sbs1_field_altitude]));
+                }
                 break;
             case sbs1_id_airborne_vel:
                 adsb.setSpeed(sbs1_to_ul(data[sbs1_field_groundspeed]));

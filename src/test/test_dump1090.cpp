@@ -208,6 +208,9 @@ TEST_CASE_METHOD(ParserFixture, "Empty numeric fields on type 3 parse as zero wi
 {
     feed(makeMsg("3", "A12345", "", "", "", "", "", ""));
     REQUIRE(g_call_count == 1);
+    // An empty altitude field must leave altitude unset, not report 0 ft as a
+    // valid altitude.
+    CHECK_FALSE(g_captured->validAltitude());
     CHECK(g_captured->getAltitude() == 0);
     Point p = g_captured->getPosition();
     CHECK_FALSE(p.getValid());
