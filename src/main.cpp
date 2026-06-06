@@ -85,14 +85,14 @@ void handle_adsb_data(ADSBData adsb)
                                                                << aircraft->getICAOAddress() << " ("
                                                                << aircraft->getCallsign() << ")");
         fss->reportAircraft(
-            adsb.getPosition(), adsb.getAltitude(), adsb_units::deg_to_centideg(aircraft->getHeading()),
+            adsb.getPosition(), aircraft->getAltitude(), adsb_units::deg_to_centideg(aircraft->getHeading()),
             adsb_units::knots_to_cm_per_s(aircraft->getSpeed()),
             adsb_units::ft_per_min_to_cm_per_s(aircraft->getVertVel()), aircraft->getICAOAddress(),
             aircraft->getCallsign(), aircraft->getSquawk(),
             /* Time since last contact (0), we just saw it now */
             0,
             /* Report valid for: coords, (and as known about other fields) */
-            valid_coords | (adsb.validAltitude() ? valid_altitude : 0) |
+            valid_coords | (aircraft->validAltitude() ? valid_altitude : 0) |
                 (aircraft->validHeading() ? valid_heading : 0) | (aircraft->validSpeed() ? valid_speed : 0) |
                 (aircraft->validCallsign() ? valid_callsign : 0) | (aircraft->validSquawk() ? valid_squawk : 0) |
                 /* 64 = simulated */
