@@ -5,10 +5,24 @@
 #include "fss-reporter.hpp"
 
 
-fss_reporter_client::fss_reporter_client(const std::string &t_address, uint16_t t_port, const std::string &t_ca,
-                                         const std::string &t_private_key, const std::string &t_public_key)
+fss_reporter_client::fss_reporter_client(const std::string &t_address, uint16_t t_port, std::string t_ca,
+                                         std::string t_private_key, std::string t_public_key)
+    : ca_file(std::move(t_ca)), private_key_file(std::move(t_private_key)), public_key_file(std::move(t_public_key))
 {
-    auto server = std::make_shared<fss_reporter_server>(this, t_address, t_port, t_ca, t_private_key, t_public_key);
+    this->connectTo(t_address, t_port, false);
+}
+
+void fss_reporter_client::connectTo(const std::string &t_address, uint16_t t_port, bool t_connect)
+{
+    /* Mirror flight_safety_system::client_ssl::fss_client::connectTo(), but
+     * build a fss_reporter_server (so discovered servers send the non-aircraft
+     * identity) using our own cert paths (the base class's are private). */
+    auto server = std::make_shared<fss_reporter_server>(this, t_address, t_port, this->ca_file, this->private_key_file,
+                                                        this->public_key_file);
+    if (t_connect)
+    {
+        server->reconnect();
+    }
     this->addServer(server);
 }
 
