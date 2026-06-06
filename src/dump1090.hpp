@@ -53,7 +53,7 @@ public:
         this->heading = t_heading;
         this->heading_set = true;
     };
-    auto getHeading() -> uint32_t { return this->heading; };
+    auto getHeading() -> uint16_t { return this->heading; };
     auto validHeading() -> bool { return this->heading_set; };
     void setVertVel(int16_t t_vert_vel)
     {
