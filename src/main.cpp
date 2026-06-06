@@ -78,6 +78,7 @@ void handle_adsb_data(ADSBData adsb)
         constexpr uint32_t valid_speed = 8;
         constexpr uint32_t valid_callsign = 16;
         constexpr uint32_t valid_squawk = 32;
+        /* 64 = simulated: never set by this reporter (these are real contacts) */
         constexpr uint32_t valid_vertvel = 128;
         /* ADSB_FLAGS_SOURCE_UAT = 32768 is the only source flag; its absence means 1090ES */
 
@@ -95,7 +96,6 @@ void handle_adsb_data(ADSBData adsb)
             valid_coords | (aircraft->validAltitude() ? valid_altitude : 0) |
                 (aircraft->validHeading() ? valid_heading : 0) | (aircraft->validSpeed() ? valid_speed : 0) |
                 (aircraft->validCallsign() ? valid_callsign : 0) | (aircraft->validSquawk() ? valid_squawk : 0) |
-                /* 64 = simulated */
                 (aircraft->validVertVel() ? valid_vertvel : 0),
             /* dump1090 reports barometric pressure altitude (QNE/standard datum), not QNH */
             0,
