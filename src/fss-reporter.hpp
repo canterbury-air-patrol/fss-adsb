@@ -8,9 +8,13 @@
 
 class fss_reporter_client : public flight_safety_system::client_ssl::fss_client {
 private:
-    /* Serialises all access to the underlying client: reportAircraft() runs on
-     * the dump1090 receive thread while attemptReconnect() runs on the main
-     * thread, and the base client does no locking of its own. */
+    /* Serialises reportAircraft() (which runs on the dump1090 receive thread)
+     * against attemptReconnect() (main thread). The base fss_client locks its
+     * server *list*, but each fss_server's connection pointer
+     * (fss_message_cb::conn) is unsynchronised: reportAircraft() -> sendMsgAll()
+     * reads it while attemptReconnect() -> reconnect() rewrites it. A side
+     * effect is that holding this lock across attemptReconnect() lets a
+     * blocking reconnect stall reportAircraft() until it completes. */
     std::mutex client_lock;
     /* Our own copies of the TLS credential paths. The base fss_client stores
      * these privately and only uses them from its own connectTo(); because we
