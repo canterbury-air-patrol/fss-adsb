@@ -15,7 +15,7 @@ private:
      * reads it while attemptReconnect() -> reconnect() rewrites it. A side
      * effect is that holding this lock across attemptReconnect() lets a
      * blocking reconnect stall reportAircraft() until it completes. */
-    std::mutex client_lock;
+    std::mutex client_lock{};
     /* Our own copies of the TLS credential paths. The base fss_client stores
      * these privately and only uses them from its own connectTo(); because we
      * override connectTo() to build fss_reporter_server instances, we keep our

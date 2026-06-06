@@ -54,11 +54,11 @@ fss_reporter_server::fss_reporter_server(fss_reporter_client *t_client, const st
 
 void fss_reporter_server::sendIdentify()
 {
-    auto conn = this->getConnection();
-    if (!conn)
+    auto connection = this->getConnection();
+    if (!connection)
     {
         return;
     }
     auto ident_msg = std::make_shared<flight_safety_system::transport::fss_message_identity_non_aircraft>();
-    conn->sendMsg(ident_msg);
+    connection->sendMsg(ident_msg);
 }
