@@ -26,9 +26,9 @@ class fss_reporter_server : public flight_safety_system::client_ssl::fss_server 
 public:
     fss_reporter_server(fss_reporter_client *t_reporter, const std::string &t_address, uint16_t t_port,
                         std::string t_ca, std::string t_private_key, std::string t_public_key);
-    fss_reporter_server(fss_reporter_server &) = delete;
+    fss_reporter_server(const fss_reporter_server &) = delete;
     fss_reporter_server(fss_reporter_server &&) = delete;
-    auto operator=(fss_reporter_server &) -> fss_reporter_server & = delete;
+    auto operator=(const fss_reporter_server &) -> fss_reporter_server & = delete;
     auto operator=(fss_reporter_server &&) -> fss_reporter_server & = delete;
     ~fss_reporter_server() override = default;
     void sendIdentify() override;
