@@ -75,7 +75,7 @@ jobs:
         sudo apt-get install -y \
           autotools-dev pkg-config \
           libjsoncpp-dev libgnutls28-dev libecpg-dev \
-          clang-tidy bear
+          bear
 
     # clang-format output is not stable across major versions; pin the exact
     # version the tree is formatted with so the gate is reproducible.
@@ -83,6 +83,15 @@ jobs:
       run: |
         python3 -m venv /tmp/clang-format-venv
         /tmp/clang-format-venv/bin/pip install -q clang-format==22.1.5
+
+    # clang-tidy's diagnostics also vary across versions; pin clang-tidy to the
+    # same LLVM series the tree is kept clean against. check-code.sh invokes
+    # this binary directly (see CLANG_TIDY), so no matching run-clang-tidy is
+    # needed.
+    - name: Install pinned clang-tidy
+      run: |
+        python3 -m venv /tmp/clang-tidy-venv
+        /tmp/clang-tidy-venv/bin/pip install -q clang-tidy==22.1.0.1
 
     - name: Resolve flight-safety-system revision
       id: fss-rev
@@ -127,4 +136,4 @@ jobs:
       run: bear -- make -j$(nproc)
 
     - name: code checks (clang-format, clang-tidy)
-      run: CLANG_FORMAT=/tmp/clang-format-venv/bin/clang-format ./check-code.sh
+      run: CLANG_FORMAT=/tmp/clang-format-venv/bin/clang-format CLANG_TIDY=/tmp/clang-tidy-venv/bin/clang-tidy ./check-code.sh
