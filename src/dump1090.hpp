@@ -103,9 +103,9 @@ public:
     /* Owns a recv thread and an atomic fd: not copyable or movable. The atomic
      * already makes it so; spell it out so the user-declared destructor doesn't
      * silently change which special members are generated. */
-    dump1090(dump1090 &) = delete;
+    dump1090(const dump1090 &) = delete;
     dump1090(dump1090 &&) = delete;
-    auto operator=(dump1090 &) -> dump1090 & = delete;
+    auto operator=(const dump1090 &) -> dump1090 & = delete;
     auto operator=(dump1090 &&) -> dump1090 & = delete;
     ~dump1090();
     void reconnect();
