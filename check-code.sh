@@ -21,6 +21,13 @@ clang_format="${CLANG_FORMAT:-clang-format}"
 # binary ourselves sidesteps that and parallelises the run. clang-tidy reads
 # the per-file compile flags from -p and the checks/header filter from
 # .clang-tidy automatically.
+#
+# The compile flags include GCC-only warning options (-Wduplicated-cond,
+# -Wlogical-op) that clang-tidy's clang front-end does not recognise; with
+# -Werror in the compile DB those become hard errors. -Wno-unknown-warning-option
+# tells clang to ignore the flags it doesn't know rather than fail on them.
 clang_tidy="${CLANG_TIDY:-clang-tidy}"
-printf '%s\n' src/*.cpp | xargs -P "$(nproc)" -I{} "$clang_tidy" -p . {} 2>&1 | tee clang-tidy.log
+printf '%s\n' src/*.cpp \
+    | xargs -P "$(nproc)" -I{} "$clang_tidy" --extra-arg=-Wno-unknown-warning-option -p . {} 2>&1 \
+    | tee clang-tidy.log
 ! grep -q "warning:" clang-tidy.log

@@ -5,7 +5,11 @@ bin_PROGRAMS = fss-adsb
 
 AM_CXXFLAGS=
 AM_CXXFLAGS+= -pthread -Wno-address-of-packed-member
-AM_CXXFLAGS+= -Wall -Wextra -Wshadow -Wnon-virtual-dtor -Wduplicated-cond -Wmisleading-indentation -Wlogical-op -Wformat=2 -Weffc++
+# Warning set aligned with flight-safety-system, kept as a superset: -Werror
+# and the upstream-only flags (-Wunused -Wnull-dereference -Woverloaded-virtual
+# -pedantic -Wpedantic) are added, while the extra GCC diagnostics already used
+# here (-Wextra -Wduplicated-cond -Wmisleading-indentation -Wlogical-op) stay.
+AM_CXXFLAGS+= -Werror -Wall -Wextra -Wshadow -Wunused -Wnull-dereference -Wnon-virtual-dtor -Woverloaded-virtual -Wduplicated-cond -Wmisleading-indentation -Wlogical-op -Wformat=2 -pedantic -Wpedantic -Weffc++
 
 fss_adsb_SOURCES = main.cpp dump1090.cpp dump1090.hpp fss-reporter.cpp fss-reporter.hpp units.hpp args.hpp point.hpp
 
