@@ -6,8 +6,13 @@ set -euo pipefail
 # formatted with clang-format 22.1.x; CI pins that exact version and points
 # CLANG_FORMAT at it. Locally, set CLANG_FORMAT if your system clang-format
 # is a different major version.
+#
+# Our own test sources (src/test/*.cpp) are formatted too, matching how
+# flight-safety-system formats tests/. The vendored Catch2 header
+# (src/test/catch.hpp) is intentionally excluded -- it is third-party and must
+# not be reformatted, so the glob is *.cpp rather than the whole directory.
 clang_format="${CLANG_FORMAT:-clang-format}"
-"$clang_format" --dry-run -Werror src/*.cpp src/*.hpp
+"$clang_format" --dry-run -Werror src/*.cpp src/*.hpp src/test/*.cpp
 
 # cppcheck is a third static-analysis engine with its own parser, independent
 # of the GCC-only warning flags in the compile DB. Mirror flight-safety-system's
