@@ -11,6 +11,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "../adsb_record.hpp"
 #include "../args.hpp"
 #include "../dump1090.hpp"
 #include "../units.hpp"
@@ -329,6 +330,97 @@ TEST_CASE("ADSBData::isStale", "[stale]")
     CHECK(a.isStale(1000 + window + 1, window));       // well past
     // Clock stepped backwards (now < last_seen): must not underflow to "stale".
     CHECK_FALSE(a.isStale(500, window));
+}
+
+// ---------------------------------------------------------------------------
+// Record folding and report flags (adsb_report)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("update_record folds only the fields a message carries", "[record]")
+{
+    ADSBData record(0xABCDEF);
+
+    // A first message carrying every scalar field.
+    ADSBData first(0xABCDEF);
+    first.setCallsign("QFA123");
+    first.setAltitude(3500);
+    first.setHeading(90);
+    first.setSpeed(420);
+    first.setVertVel(-64);
+    first.setSquawk(1234);
+    adsb_report::update_record(record, first);
+
+    CHECK(record.validCallsign());
+    CHECK(record.getCallsign() == "QFA123");
+    CHECK(record.validAltitude());
+    CHECK(record.getAltitude() == 3500);
+    CHECK(record.validHeading());
+    CHECK(record.getHeading() == 90);
+    CHECK(record.validSpeed());
+    CHECK(record.getSpeed() == 420);
+    CHECK(record.validVertVel());
+    CHECK(record.getVertVel() == -64);
+    CHECK(record.validSquawk());
+    CHECK(record.getSquawk() == 1234);
+
+    // A later position-only message (no scalar fields set) must leave every
+    // accumulated value, and its valid bit, untouched. This last-known
+    // behaviour is what lets the position report carry a previously-seen
+    // altitude rather than a missing one.
+    ADSBData posonly(0xABCDEF);
+    adsb_report::update_record(record, posonly);
+
+    CHECK(record.validCallsign());
+    CHECK(record.getCallsign() == "QFA123");
+    CHECK(record.validAltitude());
+    CHECK(record.getAltitude() == 3500);
+    CHECK(record.validHeading());
+    CHECK(record.getHeading() == 90);
+    CHECK(record.validSpeed());
+    CHECK(record.getSpeed() == 420);
+    CHECK(record.validVertVel());
+    CHECK(record.getVertVel() == -64);
+    CHECK(record.validSquawk());
+    CHECK(record.getSquawk() == 1234);
+}
+
+TEST_CASE("update_record keeps a known callsign when the message's is blank", "[record]")
+{
+    ADSBData record(0x1);
+    record.setCallsign("KNOWN");
+
+    // dump1090 emits blank callsign fields: validCallsign() is true but the
+    // string is empty, and that must not clobber a previously-seen callsign.
+    ADSBData blank(0x1);
+    blank.setCallsign("");
+    REQUIRE(blank.validCallsign());
+    adsb_report::update_record(record, blank);
+
+    CHECK(record.getCallsign() == "KNOWN");
+    CHECK(record.validCallsign());
+}
+
+TEST_CASE("report_flags follows what the record knows", "[record]")
+{
+    using namespace adsb_report;
+
+    // coords is always set: report_flags is only called once a position exists.
+    ADSBData empty(0x1);
+    CHECK(report_flags(empty) == valid_coords);
+
+    ADSBData alt(0x1);
+    alt.setAltitude(1000);
+    CHECK(report_flags(alt) == static_cast<uint16_t>(valid_coords | valid_altitude));
+
+    ADSBData full(0x1);
+    full.setAltitude(1000);
+    full.setHeading(10);
+    full.setSpeed(20);
+    full.setCallsign("ABC");
+    full.setSquawk(7000);
+    full.setVertVel(5);
+    CHECK(report_flags(full) == static_cast<uint16_t>(valid_coords | valid_altitude | valid_heading | valid_speed |
+                                                      valid_callsign | valid_squawk | valid_vertvel));
 }
 
 // ---------------------------------------------------------------------------
