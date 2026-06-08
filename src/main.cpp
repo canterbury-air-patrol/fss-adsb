@@ -12,6 +12,7 @@
 #include "fss.hpp"
 #include <fss-log.hpp>
 
+#include "adsb_record.hpp"
 #include "args.hpp"
 #include "dump1090.hpp"
 #include "fss-reporter.hpp"
@@ -43,64 +44,26 @@ void handle_adsb_data(ADSBData adsb)
         known_aircraft[adsb.getICAOAddress()] = aircraft;
     }
     aircraft->setLastSeen(flight_safety_system::fss_current_timestamp());
-    /* Update the callsign */
-    if (adsb.validCallsign() && adsb.getCallsign() != "")
-    {
-        aircraft->setCallsign(adsb.getCallsign());
-    }
+    adsb_report::update_record(*aircraft, adsb);
     FSS_LOG_DEBUG(log_component, "Callsign: " << aircraft->getCallsign());
-    /* Update other fields */
-    if (adsb.validAltitude())
-    {
-        aircraft->setAltitude(adsb.getAltitude());
-    }
-    if (adsb.validHeading())
-    {
-        aircraft->setHeading(adsb.getHeading());
-    }
-    if (adsb.validSpeed())
-    {
-        aircraft->setSpeed(adsb.getSpeed());
-    }
-    if (adsb.validVertVel())
-    {
-        aircraft->setVertVel(adsb.getVertVel());
-    }
-    if (adsb.validSquawk())
-    {
-        aircraft->setSquawk(adsb.getSquawk());
-    }
     if (adsb.getPosition().getValid())
     {
-        constexpr uint32_t valid_coords = 1;
-        constexpr uint32_t valid_altitude = 2;
-        constexpr uint32_t valid_heading = 4;
-        constexpr uint32_t valid_speed = 8;
-        constexpr uint32_t valid_callsign = 16;
-        constexpr uint32_t valid_squawk = 32;
-        /* 64 = simulated: never set by this reporter (these are real contacts) */
-        constexpr uint32_t valid_vertvel = 128;
-        /* ADSB_FLAGS_SOURCE_UAT = 32768 is the only source flag; its absence means 1090ES */
-
         FSS_LOG_DEBUG(log_component, "Reporting position for " << std::uppercase << std::hex
                                                                << aircraft->getICAOAddress() << " ("
                                                                << aircraft->getCallsign() << ")");
-        fss->reportAircraft(
-            adsb.getPosition(), aircraft->getAltitude(), adsb_units::deg_to_centideg(aircraft->getHeading()),
-            adsb_units::knots_to_cm_per_s(aircraft->getSpeed()),
-            adsb_units::ft_per_min_to_cm_per_s(aircraft->getVertVel()), aircraft->getICAOAddress(),
-            aircraft->getCallsign(), aircraft->getSquawk(),
-            /* Time since last contact (0), we just saw it now */
-            0,
-            /* Report valid for: coords, (and as known about other fields) */
-            valid_coords | (aircraft->validAltitude() ? valid_altitude : 0) |
-                (aircraft->validHeading() ? valid_heading : 0) | (aircraft->validSpeed() ? valid_speed : 0) |
-                (aircraft->validCallsign() ? valid_callsign : 0) | (aircraft->validSquawk() ? valid_squawk : 0) |
-                (aircraft->validVertVel() ? valid_vertvel : 0),
-            /* dump1090 reports barometric pressure altitude (QNE/standard datum), not QNH */
-            0,
-            /* Type is probably known */
-            0, flight_safety_system::fss_current_timestamp());
+        fss->reportAircraft(adsb.getPosition(), aircraft->getAltitude(),
+                            adsb_units::deg_to_centideg(aircraft->getHeading()),
+                            adsb_units::knots_to_cm_per_s(aircraft->getSpeed()),
+                            adsb_units::ft_per_min_to_cm_per_s(aircraft->getVertVel()), aircraft->getICAOAddress(),
+                            aircraft->getCallsign(), aircraft->getSquawk(),
+                            /* Time since last contact (0), we just saw it now */
+                            0,
+                            /* Report valid for: coords, and whatever else the record knows */
+                            adsb_report::report_flags(*aircraft),
+                            /* dump1090 reports barometric pressure altitude (QNE/standard datum), not QNH */
+                            0,
+                            /* Type is probably known */
+                            0, flight_safety_system::fss_current_timestamp());
     }
 }
 
