@@ -32,7 +32,7 @@ public:
     };
     auto getCallsign() -> std::string { return this->callsign; };
     auto validCallsign() -> bool { return this->callsign_set; };
-    void setPosition(Point t_pos) { this->pos = t_pos; };
+    void setPosition(const Point &t_pos) { this->pos = t_pos; };
     auto getPosition() -> Point { return this->pos; };
     void setAltitude(uint32_t t_alt)
     {
