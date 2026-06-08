@@ -58,7 +58,11 @@ static auto set_nonblocking(int fd, bool enable) -> bool
 auto convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_storage *sa) -> bool
 {
     int family = AF_UNSPEC;
-    /* Try converting an IP(v4) address first */
+    /* Try converting an IP(v4) address first. This guard mirrors the IPv6 and
+     * hostname guards below; being the first in the chain it is always-true by
+     * construction, so cppcheck's knownConditionTrueFalse is suppressed here
+     * rather than breaking the parallel structure. */
+    // cppcheck-suppress knownConditionTrueFalse
     if (family == AF_UNSPEC)
     {
         struct in_addr ia = {};

@@ -13,14 +13,13 @@ clang_format="${CLANG_FORMAT:-clang-format}"
 # of the GCC-only warning flags in the compile DB. Mirror flight-safety-system's
 # check-code.sh invocation and enabled categories.
 #
-# knownConditionTrueFalse is suppressed for dump1090.cpp: convert_str_to_sa()
-# uses a parallel IPv4/IPv6/hostname guard chain keyed on `family == AF_UNSPEC`,
-# so the first guard is always-true by construction. The symmetry is
-# deliberate; suppress rather than break it (FSS suppresses the same check for
-# transport-ssl.cpp).
+# The one known finding (an always-true guard in convert_str_to_sa()) is
+# suppressed with an inline `// cppcheck-suppress` comment at the site rather
+# than a file-wide flag here, so the suppression is narrowly scoped and travels
+# with the code. --inline-suppr is what makes cppcheck honour that comment.
 cppcheck="${CPPCHECK:-cppcheck}"
 "$cppcheck" --enable=warning,performance,portability,style --error-exitcode=1 \
-    --suppress=knownConditionTrueFalse:src/dump1090.cpp src/*.cpp
+    --inline-suppr src/*.cpp
 
 # clang-tidy's diagnostics (notably the clang-analyzer-* static analyzer) are
 # not stable across major versions. The tree is kept clean against clang-tidy
