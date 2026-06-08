@@ -75,7 +75,7 @@ jobs:
         sudo apt-get install -y \
           autotools-dev pkg-config \
           libjsoncpp-dev libgnutls28-dev libecpg-dev \
-          bear
+          bear cppcheck
 
     # clang-format output is not stable across major versions; pin the exact
     # version the tree is formatted with so the gate is reproducible.
@@ -135,5 +135,5 @@ jobs:
     - name: build with compile DB
       run: bear -- make -j$(nproc)
 
-    - name: code checks (clang-format, clang-tidy)
+    - name: code checks (clang-format, cppcheck, clang-tidy)
       run: CLANG_FORMAT=/tmp/clang-format-venv/bin/clang-format CLANG_TIDY=/tmp/clang-tidy-venv/bin/clang-tidy ./check-code.sh
