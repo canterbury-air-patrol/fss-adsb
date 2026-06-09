@@ -423,6 +423,74 @@ TEST_CASE("report_flags follows what the record knows", "[record]")
                                                       valid_callsign | valid_squawk | valid_vertvel));
 }
 
+TEST_CASE("build_report needs the triggering message to carry a position", "[record]")
+{
+    ADSBData record(0x1);
+    record.setAltitude(5000);
+
+    // No position on the message: nothing to report.
+    ADSBData no_pos(0x1);
+    CHECK_FALSE(adsb_report::build_report(record, no_pos).has_value());
+
+    ADSBData with_pos(0x1);
+    with_pos.setPosition(Point(-36.8485, 174.7633));
+    CHECK(adsb_report::build_report(record, with_pos).has_value());
+}
+
+TEST_CASE("build_report sources altitude from the record, not the message", "[record]")
+{
+    // The record holds the last-known altitude; the triggering message carries
+    // a different one. The report must use the record's value -- taking it from
+    // the message was a shipped bug.
+    ADSBData record(0x1);
+    record.setAltitude(5000);
+
+    ADSBData msg(0x1);
+    msg.setPosition(Point(-36.8485, 174.7633));
+    msg.setAltitude(9999);
+
+    auto report = adsb_report::build_report(record, msg);
+    REQUIRE(report.has_value());
+    CHECK(report->altitude == 5000);
+
+    // And a position-only message (no altitude at all) still reports the
+    // record's last-known altitude.
+    ADSBData pos_only(0x1);
+    pos_only.setPosition(Point(-36.8485, 174.7633));
+    auto report2 = adsb_report::build_report(record, pos_only);
+    REQUIRE(report2.has_value());
+    CHECK(report2->altitude == 5000);
+}
+
+TEST_CASE("build_report maps every field and converts units from the record", "[record]")
+{
+    ADSBData record(0xABCDEF);
+    record.setAltitude(5000);
+    record.setHeading(90);
+    record.setSpeed(100);
+    record.setVertVel(-1000);
+    record.setCallsign("QFA123");
+    record.setSquawk(1234);
+
+    ADSBData msg(0xABCDEF);
+    msg.setPosition(Point(-36.8485, 174.7633));
+
+    auto report = adsb_report::build_report(record, msg);
+    REQUIRE(report.has_value());
+
+    CHECK(report->position.getValid());
+    CHECK(report->position.getLatitude() == Approx(-36.8485));
+    CHECK(report->position.getLongitude() == Approx(174.7633));
+    CHECK(report->altitude == 5000);
+    CHECK(report->heading == 9000); // 90 deg -> centidegrees
+    CHECK(report->hor_vel == 5144); // 100 kt -> cm/s
+    CHECK(report->ver_vel == -508); // -1000 ft/min -> cm/s
+    CHECK(report->icao_address == 0xABCDEF);
+    CHECK(report->callsign == "QFA123");
+    CHECK(report->squawk == 1234);
+    CHECK(report->flags == adsb_report::report_flags(record));
+}
+
 // ---------------------------------------------------------------------------
 // Port parsing
 // ---------------------------------------------------------------------------
