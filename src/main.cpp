@@ -16,7 +16,6 @@
 #include "args.hpp"
 #include "dump1090.hpp"
 #include "fss-reporter.hpp"
-#include "units.hpp"
 
 /* Log component/category for this module. */
 constexpr const char *log_component = "adsb";
@@ -46,20 +45,14 @@ void handle_adsb_data(ADSBData adsb)
     aircraft->setLastSeen(flight_safety_system::fss_current_timestamp());
     adsb_report::update_record(*aircraft, adsb);
     FSS_LOG_DEBUG(log_component, "Callsign: " << aircraft->getCallsign());
-    if (adsb.getPosition().getValid())
+    if (auto report = adsb_report::build_report(*aircraft, adsb))
     {
-        FSS_LOG_DEBUG(log_component, "Reporting position for " << std::uppercase << std::hex
-                                                               << aircraft->getICAOAddress() << " ("
-                                                               << aircraft->getCallsign() << ")");
-        fss->reportAircraft(adsb.getPosition(), aircraft->getAltitude(),
-                            adsb_units::deg_to_centideg(aircraft->getHeading()),
-                            adsb_units::knots_to_cm_per_s(aircraft->getSpeed()),
-                            adsb_units::ft_per_min_to_cm_per_s(aircraft->getVertVel()), aircraft->getICAOAddress(),
-                            aircraft->getCallsign(), aircraft->getSquawk(),
+        FSS_LOG_DEBUG(log_component, "Reporting position for " << std::uppercase << std::hex << report->icao_address
+                                                               << " (" << report->callsign << ")");
+        fss->reportAircraft(report->position, report->altitude, report->heading, report->hor_vel, report->ver_vel,
+                            report->icao_address, report->callsign, report->squawk,
                             /* Time since last contact (0), we just saw it now */
-                            0,
-                            /* Report valid for: coords, and whatever else the record knows */
-                            adsb_report::report_flags(*aircraft),
+                            0, report->flags,
                             /* dump1090 reports barometric pressure altitude (QNE/standard datum), not QNH */
                             0,
                             /* Type is probably known */
