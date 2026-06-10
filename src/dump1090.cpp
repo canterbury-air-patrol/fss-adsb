@@ -426,9 +426,11 @@ void dump1090::reconnect()
 void dump1090::disconnect()
 {
     /* Take the fd atomically so we close it exactly once even if the receive
-     * thread clears it concurrently. shutdown() before close() is essential: a
-     * bare close() does not wake a thread blocked in recv(), so the join()
-     * below would hang. shutdown() makes that recv() return 0. */
+     * thread clears it concurrently. The ordering is shutdown -> join -> close:
+     * shutdown() wakes a thread blocked in recv() (a bare close() would not, so
+     * the join() would hang), then we join so the receive thread has stopped
+     * touching the fd, and only then close() it. Closing before the join races
+     * the receive thread's in-flight recv() on the same fd. */
     int cur = this->fd.exchange(-1);
     if (cur != -1)
     {
@@ -441,11 +443,14 @@ void dump1090::disconnect()
             FSS_LOG_WARN(log_component,
                          "shutdown() failed: " << std::system_category().message(err) << " (errno " << err << ")");
         }
-        close(cur);
     }
     if (this->recv_thread.joinable())
     {
         this->recv_thread.join();
+    }
+    if (cur != -1)
+    {
+        close(cur);
     }
 }
 
