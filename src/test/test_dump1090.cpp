@@ -16,7 +16,7 @@
 #include "../dump1090.hpp"
 #include "../units.hpp"
 
-// adsb_cb is a plain C function pointer (void(*)(ADSBData)) so it cannot carry
+// adsb_cb is a plain C function pointer (void(*)(const ADSBData&)) so it cannot carry
 // state via a lambda capture. Results are funnelled through file-scope storage,
 // reset before each feed() call.
 namespace {
@@ -24,7 +24,7 @@ namespace {
 std::optional<ADSBData> g_captured;
 int g_call_count = 0;
 
-void capture_cb(ADSBData adsb)
+void capture_cb(const ADSBData &adsb)
 {
     g_captured = adsb;
     g_call_count++;

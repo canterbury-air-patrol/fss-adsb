@@ -26,63 +26,63 @@ private:
     uint64_t last_seen{0};
 public:
     explicit ADSBData(uint32_t t_ICAOAddress) : ICAOAddress(t_ICAOAddress) {};
-    auto getICAOAddress() -> uint32_t { return this->ICAOAddress; };
+    [[nodiscard]] auto getICAOAddress() const -> uint32_t { return this->ICAOAddress; };
     void setCallsign(std::string t_callsign)
     {
         this->callsign = std::move(t_callsign);
         this->callsign_set = true;
     };
-    auto getCallsign() -> std::string { return this->callsign; };
-    auto validCallsign() -> bool { return this->callsign_set; };
+    [[nodiscard]] auto getCallsign() const -> std::string { return this->callsign; };
+    [[nodiscard]] auto validCallsign() const -> bool { return this->callsign_set; };
     void setPosition(const Point &t_pos) { this->pos = t_pos; };
-    auto getPosition() -> Point { return this->pos; };
+    [[nodiscard]] auto getPosition() const -> Point { return this->pos; };
     void setAltitude(uint32_t t_alt)
     {
         this->altitude = t_alt;
         this->altitude_set = true;
     };
-    auto getAltitude() -> uint32_t { return this->altitude; };
-    auto validAltitude() -> bool { return this->altitude_set; };
+    [[nodiscard]] auto getAltitude() const -> uint32_t { return this->altitude; };
+    [[nodiscard]] auto validAltitude() const -> bool { return this->altitude_set; };
     void setSpeed(uint32_t t_speed)
     {
         this->speed = t_speed;
         this->speed_set = true;
     };
-    auto getSpeed() -> uint32_t { return this->speed; };
-    auto validSpeed() -> bool { return this->speed_set; };
+    [[nodiscard]] auto getSpeed() const -> uint32_t { return this->speed; };
+    [[nodiscard]] auto validSpeed() const -> bool { return this->speed_set; };
     void setHeading(uint16_t t_heading)
     {
         this->heading = t_heading;
         this->heading_set = true;
     };
-    auto getHeading() -> uint16_t { return this->heading; };
-    auto validHeading() -> bool { return this->heading_set; };
+    [[nodiscard]] auto getHeading() const -> uint16_t { return this->heading; };
+    [[nodiscard]] auto validHeading() const -> bool { return this->heading_set; };
     void setVertVel(int16_t t_vert_vel)
     {
         this->vert_vel = t_vert_vel;
         this->vert_vel_set = true;
     };
-    auto getVertVel() -> int16_t { return this->vert_vel; };
-    auto validVertVel() -> bool { return this->vert_vel_set; };
+    [[nodiscard]] auto getVertVel() const -> int16_t { return this->vert_vel; };
+    [[nodiscard]] auto validVertVel() const -> bool { return this->vert_vel_set; };
     void setSquawk(uint16_t t_sqawk)
     {
         this->squawk = t_sqawk;
         this->squawk_set = true;
     };
-    auto getSquawk() -> uint16_t { return this->squawk; };
-    auto validSquawk() -> bool { return this->squawk_set; };
+    [[nodiscard]] auto getSquawk() const -> uint16_t { return this->squawk; };
+    [[nodiscard]] auto validSquawk() const -> bool { return this->squawk_set; };
     void setLastSeen(uint64_t t_last_seen) { this->last_seen = t_last_seen; };
-    auto getLastSeen() -> uint64_t { return this->last_seen; };
+    [[nodiscard]] auto getLastSeen() const -> uint64_t { return this->last_seen; };
     /* Stale if last seen at least window ms ago. The now >= last_seen guard
      * stops a backwards clock step (NTP) from underflowing the subtraction and
      * evicting every aircraft. */
-    auto isStale(uint64_t now, uint64_t window) -> bool
+    [[nodiscard]] auto isStale(uint64_t now, uint64_t window) const -> bool
     {
         return now >= this->last_seen && (now - this->last_seen) >= window;
     }
 };
 
-using notify_dump1090_adsb_data_cb = void (*)(ADSBData cmd);
+using notify_dump1090_adsb_data_cb = void (*)(const ADSBData &cmd);
 
 class dump1090 {
 private:

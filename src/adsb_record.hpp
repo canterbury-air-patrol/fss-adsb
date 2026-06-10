@@ -31,7 +31,7 @@ constexpr uint16_t valid_vertvel = 128;
  * leaves the previously-seen altitude/heading/etc. (and their valid bits)
  * intact. last_seen is deliberately not touched here: it needs the current
  * clock and stays with the caller. */
-inline void update_record(ADSBData &record, ADSBData &msg)
+inline void update_record(ADSBData &record, const ADSBData &msg)
 {
     if (msg.validCallsign() && msg.getCallsign() != "")
     {
@@ -63,7 +63,7 @@ inline void update_record(ADSBData &record, ADSBData &msg)
  * valid here: this is only called once the message carried a position. Every
  * other bit follows what the accumulated record knows, not the triggering
  * message, so the report carries last-known altitude/heading/etc. */
-inline auto report_flags(ADSBData &record) -> uint16_t
+inline auto report_flags(const ADSBData &record) -> uint16_t
 {
     return valid_coords | (record.validAltitude() ? valid_altitude : 0) | (record.validHeading() ? valid_heading : 0) |
            (record.validSpeed() ? valid_speed : 0) | (record.validCallsign() ? valid_callsign : 0) |
@@ -89,7 +89,7 @@ struct position_report {
  * message carried no position. Every value is sourced from the accumulated
  * record -- crucially the altitude, which must be the last-known altitude held
  * in the record and not whatever the triggering message happened to carry. */
-inline auto build_report(ADSBData &record, ADSBData &msg) -> std::optional<position_report>
+inline auto build_report(const ADSBData &record, const ADSBData &msg) -> std::optional<position_report>
 {
     if (!msg.getPosition().getValid())
     {
