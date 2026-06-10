@@ -32,7 +32,7 @@ void sigIntHandler(__attribute__((unused)) int signum)
 std::map<uint32_t, std::shared_ptr<ADSBData>> known_aircraft;
 std::mutex known_aircraft_lock;
 
-void handle_adsb_data(ADSBData adsb)
+void handle_adsb_data(const ADSBData &adsb)
 {
     FSS_LOG_DEBUG(log_component, "ADSB Data for " << std::uppercase << std::hex << adsb.getICAOAddress());
     std::unique_lock<std::mutex> lk(known_aircraft_lock);
