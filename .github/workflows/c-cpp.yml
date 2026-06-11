@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+# The FSS resolve/cache/build-install/autogen boilerplate that every job shares
+# lives in the local composite action .github/actions/setup-fss. Jobs check out
+# the repo first (so the action is present) then `uses: ./.github/actions/setup-fss`.
+
 jobs:
   # ─── 1. Build ─────────────────────────────────────────────────────────────
   build:
@@ -18,48 +22,7 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
-    - name: Install deps
-      run: |
-        sudo apt-get update -qq
-        sudo apt-get install -y \
-          autotools-dev pkg-config \
-          libjsoncpp-dev libgnutls28-dev libecpg-dev
-
-    - name: Resolve flight-safety-system revision
-      id: fss-rev
-      run: |
-        set -euo pipefail
-        sha="$(git ls-remote https://github.com/canterbury-air-patrol/flight-safety-system.git refs/heads/develop | cut -f1)"
-        if [ -z "$sha" ]; then
-          echo "Failed to resolve flight-safety-system develop SHA" >&2
-          exit 1
-        fi
-        echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-    - name: Cache flight-safety-system build
-      id: cache-fss
-      uses: actions/cache@v5
-      with:
-        path: /tmp/fss
-        key: fss-${{ runner.os }}-${{ steps.fss-rev.outputs.sha }}-${{ hashFiles('.github/workflows/c-cpp.yml') }}
-
-    - name: Build and install flight-safety-system
-      run: |
-        if [ "${{ steps.cache-fss.outputs.cache-hit }}" != "true" ]; then
-          git clone --branch develop --depth 1 \
-            https://github.com/canterbury-air-patrol/flight-safety-system.git /tmp/fss
-          cd /tmp/fss
-          ./autogen.sh
-          ./configure
-          make -j$(nproc)
-        else
-          cd /tmp/fss
-        fi
-        sudo make install
-        sudo ldconfig
-
-    - name: autogen
-      run: ./autogen.sh
+    - uses: ./.github/actions/setup-fss
 
     - name: configure
       run: ./configure
@@ -74,13 +37,9 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
-    - name: Install deps
-      run: |
-        sudo apt-get update -qq
-        sudo apt-get install -y \
-          autotools-dev pkg-config \
-          libjsoncpp-dev libgnutls28-dev libecpg-dev \
-          bear cppcheck
+    - uses: ./.github/actions/setup-fss
+      with:
+        extra-packages: bear cppcheck
 
     # clang-format output is not stable across major versions; pin the exact
     # version the tree is formatted with so the gate is reproducible.
@@ -97,42 +56,6 @@ jobs:
       run: |
         python3 -m venv /tmp/clang-tidy-venv
         /tmp/clang-tidy-venv/bin/pip install -q clang-tidy==22.1.0.1
-
-    - name: Resolve flight-safety-system revision
-      id: fss-rev
-      run: |
-        set -euo pipefail
-        sha="$(git ls-remote https://github.com/canterbury-air-patrol/flight-safety-system.git refs/heads/develop | cut -f1)"
-        if [ -z "$sha" ]; then
-          echo "Failed to resolve flight-safety-system develop SHA" >&2
-          exit 1
-        fi
-        echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-    - name: Cache flight-safety-system build
-      id: cache-fss
-      uses: actions/cache@v5
-      with:
-        path: /tmp/fss
-        key: fss-${{ runner.os }}-${{ steps.fss-rev.outputs.sha }}-${{ hashFiles('.github/workflows/c-cpp.yml') }}
-
-    - name: Build and install flight-safety-system
-      run: |
-        if [ "${{ steps.cache-fss.outputs.cache-hit }}" != "true" ]; then
-          git clone --branch develop --depth 1 \
-            https://github.com/canterbury-air-patrol/flight-safety-system.git /tmp/fss
-          cd /tmp/fss
-          ./autogen.sh
-          ./configure
-          make -j$(nproc)
-        else
-          cd /tmp/fss
-        fi
-        sudo make install
-        sudo ldconfig
-
-    - name: autogen
-      run: ./autogen.sh
 
     - name: configure
       run: ./configure
@@ -155,48 +78,7 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
-    - name: Install deps
-      run: |
-        sudo apt-get update -qq
-        sudo apt-get install -y \
-          autotools-dev pkg-config \
-          libjsoncpp-dev libgnutls28-dev libecpg-dev
-
-    - name: Resolve flight-safety-system revision
-      id: fss-rev
-      run: |
-        set -euo pipefail
-        sha="$(git ls-remote https://github.com/canterbury-air-patrol/flight-safety-system.git refs/heads/develop | cut -f1)"
-        if [ -z "$sha" ]; then
-          echo "Failed to resolve flight-safety-system develop SHA" >&2
-          exit 1
-        fi
-        echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-    - name: Cache flight-safety-system build
-      id: cache-fss
-      uses: actions/cache@v5
-      with:
-        path: /tmp/fss
-        key: fss-${{ runner.os }}-${{ steps.fss-rev.outputs.sha }}-${{ hashFiles('.github/workflows/c-cpp.yml') }}
-
-    - name: Build and install flight-safety-system
-      run: |
-        if [ "${{ steps.cache-fss.outputs.cache-hit }}" != "true" ]; then
-          git clone --branch develop --depth 1 \
-            https://github.com/canterbury-air-patrol/flight-safety-system.git /tmp/fss
-          cd /tmp/fss
-          ./autogen.sh
-          ./configure
-          make -j$(nproc)
-        else
-          cd /tmp/fss
-        fi
-        sudo make install
-        sudo ldconfig
-
-    - name: autogen
-      run: ./autogen.sh
+    - uses: ./.github/actions/setup-fss
 
     - name: configure with thread sanitizer
       run: ./configure CXXFLAGS="-fsanitize=thread -fno-omit-frame-pointer -O1 -g" LDFLAGS="-fsanitize=thread"
@@ -218,48 +100,7 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
-    - name: Install deps
-      run: |
-        sudo apt-get update -qq
-        sudo apt-get install -y \
-          autotools-dev pkg-config \
-          libjsoncpp-dev libgnutls28-dev libecpg-dev
-
-    - name: Resolve flight-safety-system revision
-      id: fss-rev
-      run: |
-        set -euo pipefail
-        sha="$(git ls-remote https://github.com/canterbury-air-patrol/flight-safety-system.git refs/heads/develop | cut -f1)"
-        if [ -z "$sha" ]; then
-          echo "Failed to resolve flight-safety-system develop SHA" >&2
-          exit 1
-        fi
-        echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-    - name: Cache flight-safety-system build
-      id: cache-fss
-      uses: actions/cache@v5
-      with:
-        path: /tmp/fss
-        key: fss-${{ runner.os }}-${{ steps.fss-rev.outputs.sha }}-${{ hashFiles('.github/workflows/c-cpp.yml') }}
-
-    - name: Build and install flight-safety-system
-      run: |
-        if [ "${{ steps.cache-fss.outputs.cache-hit }}" != "true" ]; then
-          git clone --branch develop --depth 1 \
-            https://github.com/canterbury-air-patrol/flight-safety-system.git /tmp/fss
-          cd /tmp/fss
-          ./autogen.sh
-          ./configure
-          make -j$(nproc)
-        else
-          cd /tmp/fss
-        fi
-        sudo make install
-        sudo ldconfig
-
-    - name: autogen
-      run: ./autogen.sh
+    - uses: ./.github/actions/setup-fss
 
     - name: configure with address and undefined-behaviour sanitizers
       run: |
@@ -283,49 +124,9 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
-    - name: Install deps
-      run: |
-        sudo apt-get update -qq
-        sudo apt-get install -y \
-          autotools-dev pkg-config \
-          libjsoncpp-dev libgnutls28-dev libecpg-dev \
-          valgrind
-
-    - name: Resolve flight-safety-system revision
-      id: fss-rev
-      run: |
-        set -euo pipefail
-        sha="$(git ls-remote https://github.com/canterbury-air-patrol/flight-safety-system.git refs/heads/develop | cut -f1)"
-        if [ -z "$sha" ]; then
-          echo "Failed to resolve flight-safety-system develop SHA" >&2
-          exit 1
-        fi
-        echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-    - name: Cache flight-safety-system build
-      id: cache-fss
-      uses: actions/cache@v5
+    - uses: ./.github/actions/setup-fss
       with:
-        path: /tmp/fss
-        key: fss-${{ runner.os }}-${{ steps.fss-rev.outputs.sha }}-${{ hashFiles('.github/workflows/c-cpp.yml') }}
-
-    - name: Build and install flight-safety-system
-      run: |
-        if [ "${{ steps.cache-fss.outputs.cache-hit }}" != "true" ]; then
-          git clone --branch develop --depth 1 \
-            https://github.com/canterbury-air-patrol/flight-safety-system.git /tmp/fss
-          cd /tmp/fss
-          ./autogen.sh
-          ./configure
-          make -j$(nproc)
-        else
-          cd /tmp/fss
-        fi
-        sudo make install
-        sudo ldconfig
-
-    - name: autogen
-      run: ./autogen.sh
+        extra-packages: valgrind
 
     - name: configure
       run: ./configure
