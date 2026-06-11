@@ -1,4 +1,3 @@
-#include <mutex>
 #include <utility>
 
 #include <fss-transport.hpp>
@@ -35,14 +34,10 @@ void fss_reporter_client::reportAircraft(const Point &t_position, uint32_t t_alt
     auto msg = std::make_shared<flight_safety_system::transport::fss_message_position_report>(
         t_position.getLatitude(), t_position.getLongitude(), t_altitude, t_heading, t_hor_vel, t_ver_vel,
         t_icao_address, t_callsign, t_squawk, t_tslc, t_flags, t_alt_type, t_emitter_type, t_timestamp);
-    const std::scoped_lock lock(this->client_lock);
+    /* sendMsgAll() is now safe to call concurrently with attemptReconnect():
+     * flight-safety-system >= 1.0.2 synchronises fss_message_cb's connection
+     * pointer internally, so no external client_lock is needed here. */
     this->sendMsgAll(msg);
-}
-
-void fss_reporter_client::attemptReconnect()
-{
-    const std::scoped_lock lock(this->client_lock);
-    flight_safety_system::client_ssl::fss_client::attemptReconnect();
 }
 
 fss_reporter_server::fss_reporter_server(fss_reporter_client *t_client, const std::string &t_address, uint16_t t_port,

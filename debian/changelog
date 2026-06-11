@@ -1,3 +1,12 @@
+fss-adsb (0.5.4) unstable; urgency=medium
+
+  * fss-reporter: drop client_lock; rely on flight-safety-system's internally
+    synchronised connection pointer so a blocking reconnect no longer stalls
+    reportAircraft() on the dump1090 receive thread.
+  * debian: require flight-safety-system >= 1.0.2
+
+ -- Scott Parlane <sjp@canterburyairpatrol.org>  Thu, 12 Jun 2026 00:00:00 +0000
+
 fss-adsb (0.5.3) unstable; urgency=medium
 
   * debian: require flight-safety-system >= 1.0.0
