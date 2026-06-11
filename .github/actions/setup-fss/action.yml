@@ -1,0 +1,66 @@
+name: Set up flight-safety-system
+description: >
+  Install the base build dependencies, build and install
+  flight-safety-system (develop) with caching, and run autogen so the working
+  tree is ready to ./configure. Shared by every job in the C/C++ CI workflow.
+
+inputs:
+  extra-packages:
+    description: >
+      Additional apt packages to install beyond the base build deps
+      (space-separated, e.g. "bear cppcheck" or "valgrind").
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install deps
+      shell: bash
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y \
+          autotools-dev pkg-config \
+          libjsoncpp-dev libgnutls28-dev libecpg-dev \
+          ${{ inputs.extra-packages }}
+
+    - name: Resolve flight-safety-system revision
+      id: fss-rev
+      shell: bash
+      run: |
+        set -euo pipefail
+        sha="$(git ls-remote https://github.com/canterbury-air-patrol/flight-safety-system.git refs/heads/develop | cut -f1)"
+        if [ -z "$sha" ]; then
+          echo "Failed to resolve flight-safety-system develop SHA" >&2
+          exit 1
+        fi
+        echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+    # The cache key hashes this action file (not the workflow): the FSS build
+    # steps now live here, so changing them is what should bust the cache.
+    - name: Cache flight-safety-system build
+      id: cache-fss
+      uses: actions/cache@v5
+      with:
+        path: /tmp/fss
+        key: fss-${{ runner.os }}-${{ steps.fss-rev.outputs.sha }}-${{ hashFiles('.github/actions/setup-fss/action.yml') }}
+
+    - name: Build and install flight-safety-system
+      shell: bash
+      run: |
+        if [ "${{ steps.cache-fss.outputs.cache-hit }}" != "true" ]; then
+          git clone --branch develop --depth 1 \
+            https://github.com/canterbury-air-patrol/flight-safety-system.git /tmp/fss
+          cd /tmp/fss
+          ./autogen.sh
+          ./configure
+          make -j$(nproc)
+        else
+          cd /tmp/fss
+        fi
+        sudo make install
+        sudo ldconfig
+
+    - name: autogen
+      shell: bash
+      run: ./autogen.sh
