@@ -1,5 +1,6 @@
 #include "catch.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <optional>
 #include <string>
@@ -19,10 +20,18 @@
 // adsb_cb is a plain C function pointer (void(*)(const ADSBData&)) so it cannot carry
 // state via a lambda capture. Results are funnelled through file-scope storage,
 // reset before each feed() call.
+//
+// In the parser tests capture_cb runs synchronously on the test thread, but in
+// the reconnect lifecycle tests it runs on dump1090's receive thread while the
+// test thread polls. g_call_count is atomic so that read/write is race-free, and
+// because capture_cb writes g_captured *before* the atomic increment and the
+// test only reads g_captured after observing the count, the increment also
+// publishes g_captured (a happens-before edge) -- so g_captured needs no
+// separate lock.
 namespace {
 
 std::optional<ADSBData> g_captured;
-int g_call_count = 0;
+std::atomic<int> g_call_count = 0;
 
 void capture_cb(const ADSBData &adsb)
 {
