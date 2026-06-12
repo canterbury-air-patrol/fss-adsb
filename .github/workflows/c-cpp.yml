@@ -134,12 +134,13 @@ jobs:
     - name: build test binary
       run: make -C src -j$(nproc) test_dump1090
 
-    # libtool --mode=execute resolves the real binary (and any library paths)
-    # whether libtool linked it directly or behind a wrapper script.
+    # --track-fds=yes makes leaked file descriptors errors too (valgrind
+    # >= 3.22 routes them through the normal error machinery), guarding the
+    # one-close-per-connection invariant in dump1090's reconnect handling.
     - name: valgrind
       run: |
-        ./libtool --mode=execute \
-          valgrind \
+        valgrind \
           --leak-check=full \
+          --track-fds=yes \
           --error-exitcode=1 \
           src/test_dump1090
