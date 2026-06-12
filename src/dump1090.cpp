@@ -165,13 +165,16 @@ static auto sbs1_to_ul(const std::string &s, int base = 10) -> unsigned long
 
 /* Parse a signed altitude string and clamp to [0, UINT32_MAX].
  * Negative values (e.g. "-100" for Schiphol at -13 ft MSL) become 0 rather
- * than wrapping to a huge uint32 via strtoul. */
+ * than wrapping to a huge uint32 via strtoul. Parsed as long long because on
+ * 32-bit targets (armhf) UINT32_MAX does not fit in a long: the old
+ * static_cast<long>(UINT32_MAX) clamp bound was -1, so every altitude
+ * "clamped" to -1 and wrapped to 0xFFFFFFFF. */
 static auto sbs1_to_altitude(const std::string &s) -> uint32_t
 {
-    long v = std::strtol(s.c_str(), nullptr, 10);
-    long clamped = std::max(v, 0L);
+    long long v = std::strtoll(s.c_str(), nullptr, 10);
+    long long clamped = std::max(v, 0LL);
     return static_cast<uint32_t>(
-        std::min(clamped, static_cast<long>(UINT32_MAX))); // NOLINT(cppcoreguidelines-narrowing-conversions)
+        std::min(clamped, static_cast<long long>(UINT32_MAX))); // NOLINT(cppcoreguidelines-narrowing-conversions)
 }
 
 /* Parse a vertical-rate string and clamp to [INT16_MIN, INT16_MAX].
