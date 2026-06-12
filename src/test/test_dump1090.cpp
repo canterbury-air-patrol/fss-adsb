@@ -8,6 +8,7 @@
 #include <utility>
 
 #include <arpa/inet.h>
+#include <dirent.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -42,13 +43,12 @@ void capture_cb(const ADSBData &adsb)
 struct ParserFixture {
     // Port 1 on loopback: connect fails immediately (ECONNREFUSED), fd stays
     // -1, no recv thread is spawned. Safe to construct in unit tests.
-    dump1090 dut{"127.0.0.1", 1};
+    dump1090 dut{"127.0.0.1", 1, capture_cb};
 
     ParserFixture()
     {
         g_captured.reset();
         g_call_count = 0;
-        dut.registerCB(capture_cb);
     }
 
     void feed(const std::string &line) { dut.test_processMessage(line); }
@@ -86,6 +86,21 @@ std::pair<int, uint16_t> open_loopback_listener()
     socklen_t len = sizeof(addr);
     REQUIRE(getsockname(lfd, reinterpret_cast<sockaddr *>(&addr), &len) == 0);
     return {lfd, ntohs(addr.sin_port)};
+}
+
+// Count this process's open file descriptors via /proc/self/fd. Used to pin
+// the no-fd-leak-per-reconnect-cycle behaviour.
+int count_open_fds()
+{
+    int count = 0;
+    DIR *dir = opendir("/proc/self/fd");
+    REQUIRE(dir != nullptr);
+    while (readdir(dir) != nullptr)
+    {
+        count++;
+    }
+    closedir(dir);
+    return count;
 }
 
 // Poll a predicate until it holds or the timeout expires.
@@ -179,6 +194,22 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 4 heading > UINT16_MAX clamps to UINT1
     CHECK(g_captured->getHeading() == UINT16_MAX);
 }
 
+TEST_CASE_METHOD(ParserFixture, "MSG type 4 ground speed > UINT32_MAX clamps to UINT32_MAX", "[parser][clamp]")
+{
+    feed(makeMsg("4", "A12345", "", "", "99999999999", "0", "", "", "0"));
+    REQUIRE(g_call_count == 1);
+    CHECK(g_captured->validSpeed());
+    CHECK(g_captured->getSpeed() == UINT32_MAX);
+}
+
+TEST_CASE_METHOD(ParserFixture, "MSG type 6 squawk > UINT16_MAX clamps to UINT16_MAX", "[parser][clamp]")
+{
+    feed(makeMsg("6", "A12345", "", "", "", "", "", "", "", "70000"));
+    REQUIRE(g_call_count == 1);
+    CHECK(g_captured->validSquawk());
+    CHECK(g_captured->getSquawk() == UINT16_MAX);
+}
+
 TEST_CASE_METHOD(ParserFixture, "MSG type 6 (surveillance id) sets squawk", "[parser][valid]")
 {
     feed(makeMsg("6", "A12345", "", "", "", "", "", "", "", "7700"));
@@ -187,9 +218,11 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 6 (surveillance id) sets squawk", "[pa
     CHECK(g_captured->getSquawk() == 7700);
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG types 5/7/8 are accepted but set no data fields", "[parser][valid]")
+TEST_CASE_METHOD(ParserFixture, "MSG types 2/5/7/8 are accepted but set no data fields", "[parser][valid]")
 {
-    for (const char *type : {"5", "7", "8"})
+    // Type 2 (surface position) deliberately reports nothing, but the callback
+    // must still fire so a taxiing aircraft's last_seen stays fresh.
+    for (const char *type : {"2", "5", "7", "8"})
     {
         g_captured.reset();
         g_call_count = 0;
@@ -233,6 +266,25 @@ TEST_CASE_METHOD(ParserFixture, "Type 3 with empty lat/lng but valid altitude le
     CHECK(g_captured->validAltitude());
     CHECK(g_captured->getAltitude() == 35000);
     CHECK_FALSE(g_captured->getPosition().getValid());
+}
+
+TEST_CASE_METHOD(ParserFixture, "Type 4 with empty velocity fields leaves them all unset", "[parser][empty]")
+{
+    // Same class of bug as the empty altitude: an empty groundspeed/track/
+    // vertrate field parses to 0 and must not become a "valid" speed of 0 kt
+    // or a heading of due north.
+    feed(makeMsg("4", "A12345"));
+    REQUIRE(g_call_count == 1);
+    CHECK_FALSE(g_captured->validSpeed());
+    CHECK_FALSE(g_captured->validHeading());
+    CHECK_FALSE(g_captured->validVertVel());
+}
+
+TEST_CASE_METHOD(ParserFixture, "Type 6 with an empty squawk field leaves squawk unset", "[parser][empty]")
+{
+    feed(makeMsg("6", "A12345"));
+    REQUIRE(g_call_count == 1);
+    CHECK_FALSE(g_captured->validSquawk());
 }
 
 // ---------------------------------------------------------------------------
@@ -530,8 +582,7 @@ TEST_CASE("dump1090 reconnects after a dropped connection", "[reconnect]")
     g_captured.reset();
     g_call_count = 0;
 
-    dump1090 dut{"127.0.0.1", port};
-    dut.registerCB(capture_cb);
+    dump1090 dut{"127.0.0.1", port, capture_cb};
 
     // The constructor's connect() completes via the listen backlog, so the
     // client is connected even before we accept it.
@@ -562,12 +613,49 @@ TEST_CASE("dump1090 reconnects after a dropped connection", "[reconnect]")
     close(listen_fd);
 }
 
+TEST_CASE("dump1090 does not leak a file descriptor per drop/reconnect cycle", "[reconnect]")
+{
+    auto [listen_fd, port] = open_loopback_listener();
+
+    dump1090 dut{"127.0.0.1", port, capture_cb};
+    int conn = accept(listen_fd, nullptr, nullptr);
+    REQUIRE(conn >= 0);
+    REQUIRE(dut.test_isConnected());
+
+    // Baseline taken in the connected state; each cycle below returns to this
+    // exact state, so any growth is a leaked descriptor. The receive thread
+    // used to clear the fd without closing it, leaking one fd per drop.
+    int baseline = count_open_fds();
+
+    for (int cycle = 0; cycle < 2; cycle++)
+    {
+        close(conn);
+        REQUIRE(wait_for([&] { return !dut.test_isConnected(); }, std::chrono::seconds(2)));
+        // reconnect() rate-limits itself (retry_delay), so poll it until the
+        // backoff window has passed and the connection is re-established.
+        REQUIRE(wait_for(
+            [&] {
+                dut.reconnect();
+                return dut.test_isConnected();
+            },
+            std::chrono::seconds(5)));
+        conn = accept(listen_fd, nullptr, nullptr);
+        REQUIRE(conn >= 0);
+    }
+
+    CHECK(count_open_fds() == baseline);
+
+    dut.disconnect();
+    close(conn);
+    close(listen_fd);
+}
+
 TEST_CASE("dump1090 destructor cleans up a live connection", "[reconnect]")
 {
     auto [listen_fd, port] = open_loopback_listener();
     int conn = -1;
     {
-        dump1090 dut{"127.0.0.1", port};
+        dump1090 dut{"127.0.0.1", port, capture_cb};
         conn = accept(listen_fd, nullptr, nullptr);
         REQUIRE(conn >= 0);
         REQUIRE(dut.test_isConnected());

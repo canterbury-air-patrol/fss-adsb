@@ -35,17 +35,23 @@ std::mutex known_aircraft_lock;
 void handle_adsb_data(const ADSBData &adsb)
 {
     FSS_LOG_DEBUG(log_component, "ADSB Data for " << std::uppercase << std::hex << adsb.getICAOAddress());
-    std::unique_lock<std::mutex> lk(known_aircraft_lock);
-    auto aircraft = known_aircraft[adsb.getICAOAddress()];
-    if (aircraft == nullptr)
+    /* Hold the lock only for the record fold. reportAircraft() is a blocking
+     * TLS send; doing it under the lock would let a stalled server block
+     * evict_stale_aircraft() — and with it the whole main loop. */
+    std::optional<adsb_report::position_report> report;
     {
-        aircraft = std::make_shared<ADSBData>(adsb.getICAOAddress());
-        known_aircraft[adsb.getICAOAddress()] = aircraft;
+        std::unique_lock<std::mutex> lk(known_aircraft_lock);
+        auto &aircraft = known_aircraft[adsb.getICAOAddress()];
+        if (aircraft == nullptr)
+        {
+            aircraft = std::make_shared<ADSBData>(adsb.getICAOAddress());
+        }
+        aircraft->setLastSeen(flight_safety_system::fss_current_timestamp());
+        adsb_report::update_record(*aircraft, adsb);
+        FSS_LOG_DEBUG(log_component, "Callsign: " << aircraft->getCallsign());
+        report = adsb_report::build_report(*aircraft, adsb);
     }
-    aircraft->setLastSeen(flight_safety_system::fss_current_timestamp());
-    adsb_report::update_record(*aircraft, adsb);
-    FSS_LOG_DEBUG(log_component, "Callsign: " << aircraft->getCallsign());
-    if (auto report = adsb_report::build_report(*aircraft, adsb))
+    if (report)
     {
         FSS_LOG_DEBUG(log_component, "Reporting position for " << std::uppercase << std::hex << report->icao_address
                                                                << " (" << report->callsign << ")");
@@ -112,9 +118,9 @@ auto main(int argc, char *argv[]) -> int
     /* Connect to FSS Server */
     fss = std::make_shared<fss_reporter_client>(argv[3], *fss_port, argv[5], argv[6], argv[7]);
 
-    /* Connect to Dump1090 */
-    dump1090 dumper = dump1090(argv[1], *dump1090_port);
-    dumper.registerCB(handle_adsb_data);
+    /* Connect to Dump1090. The callback goes in via the constructor so it is
+     * in place before the receive thread can deliver the first message. */
+    dump1090 dumper(argv[1], *dump1090_port, handle_adsb_data);
 
     constexpr int evict_interval_secs = 60;
     int seconds_elapsed = 0;
