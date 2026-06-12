@@ -1,28 +1,38 @@
-fss-adsb (0.5.4) unstable; urgency=medium
+fss-adsb (1.0.0) unstable; urgency=medium
 
+  * dump1090: close the socket when the receive thread observes a dropped
+    connection, fixing a file-descriptor leak per drop/reconnect cycle.
+  * dump1090: take the ADS-B callback as a constructor parameter so it is in
+    place before the receive thread starts (closes a registration race).
+  * dump1090: guard empty groundspeed/track/vertrate (MSG,4) and squawk
+    (MSG,6) fields so a missing field is not reported as a valid zero value;
+    clamp ground speed and squawk parsing like the other numeric fields.
+  * dump1090: handle MSG,2 (surface position) explicitly; it reports nothing
+    but keeps the aircraft's last_seen fresh.
+  * dump1090: cap the reconnect backoff exactly at 30s; pass getaddrinfo()
+    hints (SOCK_STREAM, AI_ADDRCONFIG) when resolving the dump1090 host.
+  * main: send the position report outside the aircraft-map lock so a stalled
+    TLS send cannot block stale-aircraft eviction.
   * fss-reporter: drop client_lock; rely on flight-safety-system's internally
     synchronised connection pointer so a blocking reconnect no longer stalls
     reportAircraft() on the dump1090 receive thread.
-  * debian: require flight-safety-system >= 1.0.2
-
- -- Scott Parlane <sjp@canterburyairpatrol.org>  Thu, 12 Jun 2026 00:00:00 +0000
-
-fss-adsb (0.5.3) unstable; urgency=medium
-
-  * debian: require flight-safety-system >= 1.0.0
-
- -- Scott Parlane <sjp@canterburyairpatrol.org>  Sat, 17 May 2026 00:00:00 +0000
-
-fss-adsb (0.5.2) unstable; urgency=medium
-
+  * Bump version to 1.0.0; drop unused libtool/pkg-config-install/
+    pthread-check machinery and undefined Makefile.am variables.
+  * README: the example now points at dump1090's SBS-1 port 30003 (not the
+    raw AVR port 30002, which fss-adsb cannot parse).
   * debian: modernise packaging style
     - Switch from debian/compat to debhelper-compat (= 13) in Build-Depends
     - Update Standards-Version to 4.7.0
     - Add ${shlibs:Depends}, ${misc:Depends} to binary package Depends
     - Fix debian/copyright placeholders
     - Drop bogus dh_auto_configure override
+  * debian: Section utils; drop unused systemd and autotools-dev
+    Build-Depends; depend on every FSS library actually linked (libfss,
+    libfss-transport, libfss-transport-ssl, libfss-client-ssl), all
+    versioned >= 1.0.2.
+  * ci: valgrind now runs with --track-fds=yes to catch fd leaks.
 
- -- Scott Parlane <sjp@canterburyairpatrol.org>  Sat, 17 May 2026 00:00:00 +0000
+ -- Scott Parlane <sjp@canterburyairpatrol.org>  Fri, 12 Jun 2026 00:00:00 +0000
 
 fss-adsb (0.5.1) unstable; urgency=medium
 
