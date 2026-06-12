@@ -101,7 +101,11 @@ private:
     static constexpr int connect_timeout_ms = 5000;
     uint64_t retry_delay{retry_delay_start};
 public:
-    dump1090(std::string t_addr, uint16_t t_port);
+    /* The callback is a constructor parameter (not a separate registerCB())
+     * because the constructor already spawns the receive thread: registering
+     * afterwards would race the thread's unsynchronised read of adsb_cb and
+     * silently drop any messages arriving in the window. */
+    dump1090(std::string t_addr, uint16_t t_port, notify_dump1090_adsb_data_cb t_cb);
     /* Owns a recv thread and an atomic fd: not copyable or movable. The atomic
      * already makes it so; spell it out so the user-declared destructor doesn't
      * silently change which special members are generated. */
@@ -112,7 +116,6 @@ public:
     ~dump1090();
     void reconnect();
     void processMessages();
-    void registerCB(notify_dump1090_adsb_data_cb t_cb) { this->adsb_cb = t_cb; };
     void disconnect();
 #ifdef FSS_ADSB_TESTING
     void test_processMessage(const std::string &msg) { processMessage(msg); }

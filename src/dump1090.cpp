@@ -88,12 +88,18 @@ auto convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_s
             sa_in->sin6_addr = ia;
         }
     }
-    /* Use host name lookup (probably DNS) to resolve the name */
+    /* Use host name lookup (probably DNS) to resolve the name. The hints
+     * restrict the results to TCP-usable addresses of configured families
+     * (AI_ADDRCONFIG), instead of one duplicate entry per socket type. */
     if (family == AF_UNSPEC)
     {
+        struct addrinfo hints = {};
+        hints.ai_family = AF_UNSPEC;
+        hints.ai_socktype = SOCK_STREAM;
+        hints.ai_flags = AI_ADDRCONFIG;
         struct addrinfo *ai = nullptr;
 
-        if (getaddrinfo(addr.c_str(), nullptr, nullptr, &ai) == 0 && ai != nullptr)
+        if (getaddrinfo(addr.c_str(), nullptr, &hints, &ai) == 0 && ai != nullptr)
         {
             if (ai->ai_addr != nullptr && ai->ai_addrlen <= sizeof(struct sockaddr_storage))
             {
@@ -143,6 +149,7 @@ using sbs1_fields = enum sbs1_fields_e : std::uint8_t {
 
 using sbs1_msgs_ids = enum sbs1_msg_ids_e : std::uint8_t {
     sbs1_id_ident = 1,
+    sbs1_id_surface_pos = 2,
     sbs1_id_airborne_pos = 3,
     sbs1_id_airborne_vel = 4,
     sbs1_id_surveillence_alt = 5,
@@ -177,13 +184,23 @@ static auto sbs1_to_vertrate(const std::string &s) -> int16_t
                    static_cast<long>(INT16_MAX))); // NOLINT(cppcoreguidelines-narrowing-conversions)
 }
 
-/* Parse a heading string and clamp to [0, UINT16_MAX].
+/* Parse an unsigned 16-bit field (heading, squawk) and clamp to [0, UINT16_MAX].
  * Values > 65535 must not silently wrap via implicit uint16_t truncation. */
-static auto sbs1_to_heading(const std::string &s) -> uint16_t
+static auto sbs1_to_u16(const std::string &s) -> uint16_t
 {
     unsigned long v = std::strtoul(s.c_str(), nullptr, 10);
     return static_cast<uint16_t>(
         std::min(v, static_cast<unsigned long>(UINT16_MAX))); // NOLINT(cppcoreguidelines-narrowing-conversions)
+}
+
+/* Parse a ground-speed string and clamp to [0, UINT32_MAX].
+ * Out-of-range garbage must not silently wrap via the unsigned long ->
+ * uint32_t narrowing (a no-op clamp on 32-bit unsigned long, by design). */
+static auto sbs1_to_speed(const std::string &s) -> uint32_t
+{
+    unsigned long v = std::strtoul(s.c_str(), nullptr, 10);
+    return static_cast<uint32_t>(
+        std::min(v, static_cast<unsigned long>(UINT32_MAX))); // NOLINT(cppcoreguidelines-narrowing-conversions)
 }
 
 void dump1090::processMessage(const std::string &t_msg)
@@ -220,11 +237,34 @@ void dump1090::processMessage(const std::string &t_msg)
                 }
                 break;
             case sbs1_id_airborne_vel:
-                adsb.setSpeed(sbs1_to_ul(data[sbs1_field_groundspeed]));
-                adsb.setHeading(sbs1_to_heading(data[sbs1_field_track]));
-                adsb.setVertVel(sbs1_to_vertrate(data[sbs1_field_vertrate]));
+                /* Guard each field like altitude above: dump1090 emits velocity
+                 * messages with missing fields, and an empty field parsing to 0
+                 * must not become a "valid" speed of 0 kt or a heading of due
+                 * north. */
+                if (!data[sbs1_field_groundspeed].empty())
+                {
+                    adsb.setSpeed(sbs1_to_speed(data[sbs1_field_groundspeed]));
+                }
+                if (!data[sbs1_field_track].empty())
+                {
+                    adsb.setHeading(sbs1_to_u16(data[sbs1_field_track]));
+                }
+                if (!data[sbs1_field_vertrate].empty())
+                {
+                    adsb.setVertVel(sbs1_to_vertrate(data[sbs1_field_vertrate]));
+                }
                 break;
-            case sbs1_id_surveillence_id: adsb.setSquawk(sbs1_to_ul(data[sbs1_field_squawk])); break;
+            case sbs1_id_surveillence_id:
+                if (!data[sbs1_field_squawk].empty())
+                {
+                    adsb.setSquawk(sbs1_to_u16(data[sbs1_field_squawk]));
+                }
+                break;
+            case sbs1_id_surface_pos:
+                /* Surface position: aircraft on the ground are deliberately not
+                 * reported (no airborne conflict), but falling through to the
+                 * callback below keeps last_seen fresh so a taxiing aircraft is
+                 * not evicted between landing and the next takeoff. */
             case sbs1_id_surveillence_alt:
             case sbs1_id_air_to_air:
             case sbs1_id_all_call_reply:
@@ -248,12 +288,26 @@ void dump1090::processMessages()
     std::string chunk;
     chunk.resize(buffer_length);
 
-    while (this->fd != -1)
+    for (;;)
     {
-        ssize_t received = recv(this->fd, &chunk[0], chunk.size(), 0);
+        int cur = this->fd;
+        if (cur == -1)
+        {
+            break;
+        }
+        ssize_t received = recv(cur, &chunk[0], chunk.size(), 0);
         if (received <= 0)
         {
-            this->fd = -1;
+            /* Connection dropped (or shutdown() by disconnect()). Whoever wins
+             * the exchange owns the close: if disconnect() already took the fd
+             * we get -1 here and it will close after joining us; otherwise we
+             * must close it ourselves — leaving that to a later reconnect leaks
+             * one descriptor per drop. */
+            int owned = this->fd.exchange(-1);
+            if (owned != -1)
+            {
+                close(owned);
+            }
             break;
         }
         accumulator.append(chunk.data(), static_cast<size_t>(received));
@@ -282,8 +336,11 @@ static void recv_adsb_thread(dump1090 *conn)
     conn->processMessages();
 }
 
-dump1090::dump1090(std::string t_addr, uint16_t t_port) : addr(std::move(t_addr)), port(t_port)
+dump1090::dump1090(std::string t_addr, uint16_t t_port, notify_dump1090_adsb_data_cb t_cb)
+    : addr(std::move(t_addr)), port(t_port), adsb_cb(t_cb)
 {
+    /* adsb_cb is initialised above, before this spawns the receive thread, so
+     * the thread never observes a half-registered callback. */
     this->connect_to_dump1090();
 }
 
@@ -413,10 +470,10 @@ void dump1090::reconnect()
 
         if (elapsed_time > this->retry_delay)
         {
-            if (this->retry_delay < retry_delay_cap)
-            {
-                this->retry_delay += this->retry_delay;
-            }
+            /* Double for the next attempt, capped exactly at retry_delay_cap,
+             * before connecting: on success connect_to_dump1090() resets the
+             * delay to retry_delay_start and must not be clobbered here. */
+            this->retry_delay = std::min(this->retry_delay * 2, retry_delay_cap);
             this->last_tried = ts;
             this->connect_to_dump1090();
         }
@@ -425,12 +482,13 @@ void dump1090::reconnect()
 
 void dump1090::disconnect()
 {
-    /* Take the fd atomically so we close it exactly once even if the receive
-     * thread clears it concurrently. The ordering is shutdown -> join -> close:
-     * shutdown() wakes a thread blocked in recv() (a bare close() would not, so
-     * the join() would hang), then we join so the receive thread has stopped
-     * touching the fd, and only then close() it. Closing before the join races
-     * the receive thread's in-flight recv() on the same fd. */
+    /* Take the fd atomically: whoever wins the exchange (us or the receive
+     * thread observing the drop) owns the close, so it happens exactly once.
+     * The ordering is shutdown -> join -> close: shutdown() wakes a thread
+     * blocked in recv() (a bare close() would not, so the join() would hang),
+     * then we join so the receive thread has stopped touching the fd, and only
+     * then close() it. Closing before the join races the receive thread's
+     * in-flight recv() on the same fd. */
     int cur = this->fd.exchange(-1);
     if (cur != -1)
     {
