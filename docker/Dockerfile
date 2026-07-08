@@ -1,4 +1,9 @@
-FROM debian:bookworm
+# The CAP repo line below keys off lsb_release, so any base with a dist
+# published at apt.canterburyairpatrol.org works (debian:bookworm,
+# debian:trixie, ubuntu:resolute). CI builds trixie and resolute; the
+# default stays bookworm for local builds.
+ARG BASE=debian:bookworm
+FROM ${BASE}
 
 RUN apt update && apt install -y lsb-release ca-certificates curl gnupg
 
