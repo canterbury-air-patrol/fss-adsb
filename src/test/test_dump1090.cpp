@@ -370,6 +370,20 @@ TEST_CASE_METHOD(ParserFixture, "Type 3 garbage coordinates do not discard a usa
 }
 
 // ---------------------------------------------------------------------------
+// Receive-time stamping
+// ---------------------------------------------------------------------------
+
+TEST_CASE_METHOD(ParserFixture, "Parsed messages carry the receive-time stamp", "[parser][timestamp]")
+{
+    // The report's timestamp/tslc are derived from this stamp at send time;
+    // it must be the recv() time handed in, not something processMessage
+    // generates itself.
+    dut.test_processMessage(makeMsg("1", "ABC123", "QFA123"), 1234567890);
+    REQUIRE(g_call_count == 1);
+    CHECK(g_captured->getLastSeen() == 1234567890);
+}
+
+// ---------------------------------------------------------------------------
 // Garbage ICAO address
 // ---------------------------------------------------------------------------
 
@@ -656,6 +670,24 @@ TEST_CASE("build_report maps every field and converts units from the record", "[
     CHECK(report->callsign == "QFA123");
     CHECK(report->squawk == 1234);
     CHECK(report->flags == adsb_report::report_flags(record));
+}
+
+TEST_CASE("derive_tslc reflects receive time, not send time", "[record]")
+{
+    using adsb_report::derive_tslc;
+
+    // Sent immediately: 0 seconds since contact.
+    CHECK(derive_tslc(1000000, 1000000) == 0);
+    // Sub-second queueing still rounds down to 0.
+    CHECK(derive_tslc(1000000, 1000999) == 0);
+    CHECK(derive_tslc(1000000, 1001000) == 1);
+    // A send delayed by a stalled server reports the true age.
+    CHECK(derive_tslc(1000000, 1090000) == 90);
+    // Ages beyond the uint8_t wire field clamp instead of wrapping.
+    CHECK(derive_tslc(1000000, 1000000 + 256 * 1000) == 255);
+    CHECK(derive_tslc(1000000, 1000000 + 3600 * 1000) == 255);
+    // A backwards clock step (NTP) must not underflow to 255.
+    CHECK(derive_tslc(1000000, 999000) == 0);
 }
 
 // ---------------------------------------------------------------------------

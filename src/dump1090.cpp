@@ -247,7 +247,7 @@ static auto sbs1_to_speed(const std::string &s) -> uint32_t
         std::min(v, static_cast<unsigned long>(UINT32_MAX))); // NOLINT(cppcoreguidelines-narrowing-conversions)
 }
 
-void dump1090::processMessage(const std::string &t_msg)
+void dump1090::processMessage(const std::string &t_msg, uint64_t t_received)
 {
     std::stringstream ss(t_msg);
     std::vector<std::string> data;
@@ -269,6 +269,10 @@ void dump1090::processMessage(const std::string &t_msg)
             return;
         }
         ADSBData adsb(*address);
+        /* Carry the receive-time stamp on the message: the report's timestamp
+         * and tslc must reflect when the data arrived, not when the (possibly
+         * backed-up) send to the FSS server finally happens. */
+        adsb.setLastSeen(t_received);
         switch (strtol(data[sbs1_field_id].c_str(), nullptr, sbs1_id_base))
         {
             case sbs1_id_ident: adsb.setCallsign(data[sbs1_field_callsign]); break;
@@ -384,6 +388,10 @@ void dump1090::processMessages()
             break;
         }
         accumulator.append(chunk.data(), static_cast<size_t>(received));
+        /* Stamp at recv, not per line: when a blocking FSS send backs this
+         * loop up, the later lines of the chunk still get the time their data
+         * actually arrived rather than the time we got around to them. */
+        uint64_t stamp = flight_safety_system::fss_current_timestamp();
 
         size_t start = 0;
         size_t pos;
@@ -391,7 +399,7 @@ void dump1090::processMessages()
         {
             if (pos > start)
             {
-                this->processMessage(accumulator.substr(start, pos - start));
+                this->processMessage(accumulator.substr(start, pos - start), stamp);
             }
             start = pos + 1;
         }

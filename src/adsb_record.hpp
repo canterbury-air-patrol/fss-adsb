@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -84,6 +85,21 @@ struct position_report {
     uint16_t squawk{0};
     uint16_t flags{0};
 };
+
+/* Time-since-last-contact for the report, in whole seconds, computed at send
+ * time from the receive-time stamp. Stamping tslc = 0 at send time reported
+ * backed-up positions as "seen 0 seconds ago" however long they had queued.
+ * Clamped to the uint8_t wire field; a backwards clock step (NTP) must not
+ * underflow to 255. */
+inline auto derive_tslc(uint64_t received, uint64_t now) -> uint8_t
+{
+    if (now <= received)
+    {
+        return 0;
+    }
+    constexpr uint64_t ms_per_s = 1000;
+    return static_cast<uint8_t>(std::min<uint64_t>((now - received) / ms_per_s, UINT8_MAX));
+}
 
 /* Build the position report for an aircraft, or nothing when the triggering
  * message carried no position. Every value is sourced from the accumulated
