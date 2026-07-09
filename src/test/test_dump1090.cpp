@@ -352,6 +352,30 @@ TEST_CASE_METHOD(ParserFixture, "Type 3 garbage coordinates do not discard a usa
 }
 
 // ---------------------------------------------------------------------------
+// Garbage ICAO address
+// ---------------------------------------------------------------------------
+
+TEST_CASE_METHOD(ParserFixture, "Bad ICAO address field: callback never fires", "[parser][address]")
+{
+    // strtoul parsed each of these to 0, collapsing unrelated garbage messages
+    // into one phantom aircraft 0x000000 that was reported to FSS.
+    for (const char *addr : {"", "XYZ123", "A12345x", "000000", "1000000"})
+    {
+        g_call_count = 0;
+        feed(makeMsg("1", addr, "QFA123"));
+        INFO("address '" << addr << "'");
+        CHECK(g_call_count == 0);
+    }
+}
+
+TEST_CASE_METHOD(ParserFixture, "Lowercase hex ICAO address is accepted", "[parser][address]")
+{
+    feed(makeMsg("1", "abc123", "QFA123"));
+    REQUIRE(g_call_count == 1);
+    CHECK(g_captured->getICAOAddress() == 0xABC123);
+}
+
+// ---------------------------------------------------------------------------
 // Truncated / malformed messages
 // ---------------------------------------------------------------------------
 

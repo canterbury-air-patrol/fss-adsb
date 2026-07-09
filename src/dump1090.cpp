@@ -161,9 +161,26 @@ using sbs1_msgs_ids = enum sbs1_msg_ids_e : std::uint8_t {
     sbs1_id_all_call_reply = 8,
 };
 
-static auto sbs1_to_ul(const std::string &s, int base = 10) -> unsigned long
+/* ICAO addresses are 24-bit allocations, transmitted as bare hex. */
+constexpr int sbs1_address_base = 16;
+constexpr uint32_t icao_address_max = 0xFFFFFF;
+
+/* Parse the ICAO address field as hex. strtoul returned 0 for an empty or
+ * non-hex field, folding every such message into one phantom aircraft
+ * 0x000000 that accumulated unrelated fields and was reported to FSS as a
+ * real contact whenever one of them carried a position. Address 0 itself is
+ * also rejected — it is not a valid ICAO allocation and dump1090 never emits
+ * it legitimately — as are values wider than 24 bits. */
+static auto sbs1_to_address(const std::string &s) -> std::optional<uint32_t>
 {
-    return std::strtoul(s.c_str(), nullptr, base);
+    uint32_t v = 0;
+    const char *end = s.c_str() + s.size();
+    auto [ptr, ec] = std::from_chars(s.c_str(), end, v, sbs1_address_base);
+    if (ec != std::errc{} || ptr != end || v == 0 || v > icao_address_max)
+    {
+        return std::nullopt;
+    }
+    return v;
 }
 
 constexpr double max_latitude = 90.0;
@@ -242,10 +259,16 @@ void dump1090::processMessage(const std::string &t_msg)
         data.push_back(substr);
     }
     constexpr uint8_t sbs1_id_base = 10;
-    constexpr uint8_t sbs1_field_address_base = 16;
     if (data.size() > sbs1_field_squawk && data[sbs1_field_type] == "MSG")
     {
-        ADSBData adsb(sbs1_to_ul(data[sbs1_field_address], sbs1_field_address_base));
+        auto address = sbs1_to_address(data[sbs1_field_address]);
+        if (!address.has_value())
+        {
+            FSS_LOG_DEBUG(log_component,
+                          "Ignoring message with bad address field '" << data[sbs1_field_address] << "'");
+            return;
+        }
+        ADSBData adsb(*address);
         switch (strtol(data[sbs1_field_id].c_str(), nullptr, sbs1_id_base))
         {
             case sbs1_id_ident: adsb.setCallsign(data[sbs1_field_callsign]); break;
