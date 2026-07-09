@@ -315,14 +315,31 @@ void dump1090::processMessage(const std::string &t_msg)
                 {
                     adsb.setSquawk(sbs1_to_u16(data[sbs1_field_squawk]));
                 }
+                /* MSG,6 carries altitude alongside the squawk; consume it like
+                 * MSG,5/MSG,7 below. */
+                if (!data[sbs1_field_altitude].empty())
+                {
+                    adsb.setAltitude(sbs1_to_altitude(data[sbs1_field_altitude]));
+                }
+                break;
+            case sbs1_id_surveillence_alt:
+            case sbs1_id_air_to_air:
+                /* MSG,5 (surveillance alt) and MSG,7 (air-to-air) carry an
+                 * altitude but no position. Aircraft with Mode S but no ADS-B
+                 * Out emit only these, so without this their record never
+                 * gains an altitude; for ADS-B targets it keeps the last-known
+                 * altitude fresh between MSG,3s. */
+                if (!data[sbs1_field_altitude].empty())
+                {
+                    adsb.setAltitude(sbs1_to_altitude(data[sbs1_field_altitude]));
+                }
                 break;
             case sbs1_id_surface_pos:
                 /* Surface position: aircraft on the ground are deliberately not
-                 * reported (no airborne conflict), but falling through to the
-                 * callback below keeps last_seen fresh so a taxiing aircraft is
-                 * not evicted between landing and the next takeoff. */
-            case sbs1_id_surveillence_alt:
-            case sbs1_id_air_to_air:
+                 * reported (no airborne conflict, and its altitude is just the
+                 * airfield's), but falling through to the callback below keeps
+                 * last_seen fresh so a taxiing aircraft is not evicted between
+                 * landing and the next takeoff. */
             case sbs1_id_all_call_reply:
                 /* Don't care about these messages */
                 break;

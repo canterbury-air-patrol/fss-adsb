@@ -218,10 +218,28 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 6 (surveillance id) sets squawk", "[pa
     CHECK(g_captured->getSquawk() == 7700);
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG types 2/5/7/8 are accepted but set no data fields", "[parser][valid]")
+TEST_CASE_METHOD(ParserFixture, "MSG types 5/6/7 with an altitude set it", "[parser][valid]")
+{
+    // Mode-S-only aircraft emit nothing but these; discarding their altitude
+    // meant such targets never gained one at all.
+    for (const char *type : {"5", "6", "7"})
+    {
+        g_captured.reset();
+        g_call_count = 0;
+        feed(makeMsg(type, "A12345", "", "17500"));
+        INFO("transmission type " << type);
+        REQUIRE(g_call_count == 1);
+        CHECK(g_captured->validAltitude());
+        CHECK(g_captured->getAltitude() == 17500);
+        CHECK_FALSE(g_captured->getPosition().getValid());
+    }
+}
+
+TEST_CASE_METHOD(ParserFixture, "MSG types 2/5/7/8 with empty fields set no data fields", "[parser][valid]")
 {
     // Type 2 (surface position) deliberately reports nothing, but the callback
-    // must still fire so a taxiing aircraft's last_seen stays fresh.
+    // must still fire so a taxiing aircraft's last_seen stays fresh. Types 5/7
+    // consume an altitude when present; an empty field must leave it unset.
     for (const char *type : {"2", "5", "7", "8"})
     {
         g_captured.reset();
