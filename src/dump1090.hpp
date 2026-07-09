@@ -5,7 +5,14 @@
 #include <thread>
 #include <cstdint>
 
+#include <sys/socket.h>
+
 #include "point.hpp"
+
+/* Resolve an IPv4 literal, IPv6 literal or hostname (plus port) into *sa.
+ * Returns false when the address is unusable. Defined in dump1090.cpp;
+ * declared here so the tests can exercise it directly. */
+auto convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_storage *sa) -> bool;
 
 class ADSBData {
 private:

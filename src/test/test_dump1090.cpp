@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <optional>
 #include <string>
 #include <thread>
@@ -710,6 +711,58 @@ TEST_CASE("parse_port", "[args]")
     CHECK_FALSE(args::parse_port("30003x")); // trailing garbage
     CHECK_FALSE(args::parse_port("abc"));    // non-numeric
     CHECK_FALSE(args::parse_port("-1"));     // negative
+}
+
+// ---------------------------------------------------------------------------
+// Address resolution (convert_str_to_sa)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("convert_str_to_sa parses an IPv4 literal", "[resolver]")
+{
+    sockaddr_storage ss{};
+    REQUIRE(convert_str_to_sa("127.0.0.1", 30003, &ss));
+    REQUIRE(ss.ss_family == AF_INET);
+    auto *sin = reinterpret_cast<sockaddr_in *>(&ss);
+    CHECK(ntohl(sin->sin_addr.s_addr) == INADDR_LOOPBACK);
+    CHECK(ntohs(sin->sin_port) == 30003);
+}
+
+TEST_CASE("convert_str_to_sa parses an IPv6 literal", "[resolver]")
+{
+    sockaddr_storage ss{};
+    REQUIRE(convert_str_to_sa("::1", 30003, &ss));
+    REQUIRE(ss.ss_family == AF_INET6);
+    auto *sin6 = reinterpret_cast<sockaddr_in6 *>(&ss);
+    CHECK(memcmp(&sin6->sin6_addr, &in6addr_loopback, sizeof(in6addr_loopback)) == 0);
+    CHECK(ntohs(sin6->sin6_port) == 30003);
+}
+
+TEST_CASE("convert_str_to_sa resolves a hostname", "[resolver]")
+{
+    sockaddr_storage ss{};
+    REQUIRE(convert_str_to_sa("localhost", 30003, &ss));
+    // Either family may win depending on the host's configuration; the port
+    // must be set on whichever sockaddr came back.
+    if (ss.ss_family == AF_INET)
+    {
+        auto *sin = reinterpret_cast<sockaddr_in *>(&ss);
+        CHECK(ntohl(sin->sin_addr.s_addr) == INADDR_LOOPBACK);
+        CHECK(ntohs(sin->sin_port) == 30003);
+    }
+    else
+    {
+        REQUIRE(ss.ss_family == AF_INET6);
+        auto *sin6 = reinterpret_cast<sockaddr_in6 *>(&ss);
+        CHECK(memcmp(&sin6->sin6_addr, &in6addr_loopback, sizeof(in6addr_loopback)) == 0);
+        CHECK(ntohs(sin6->sin6_port) == 30003);
+    }
+}
+
+TEST_CASE("convert_str_to_sa rejects an unresolvable name", "[resolver]")
+{
+    // .invalid is reserved (RFC 6761): resolvers must return NXDOMAIN.
+    sockaddr_storage ss{};
+    CHECK_FALSE(convert_str_to_sa("dump1090.invalid", 30003, &ss));
 }
 
 // ---------------------------------------------------------------------------
