@@ -288,6 +288,70 @@ TEST_CASE_METHOD(ParserFixture, "Type 6 with an empty squawk field leaves squawk
 }
 
 // ---------------------------------------------------------------------------
+// Garbage coordinates
+// ---------------------------------------------------------------------------
+
+TEST_CASE_METHOD(ParserFixture, "Type 3 unparseable coordinates leave position unset", "[parser][coords]")
+{
+    // strtod parsed each of these to 0.0 (or a nonsense prefix) and the
+    // position was marked valid, placing the aircraft at or near Null Island.
+    const std::pair<const char *, const char *> cases[] = {
+        {"garbage", "174.7633"},   // unparseable latitude
+        {"-36.8485", "garbage"},   // unparseable longitude
+        {"-36.8485x", "174.7633"}, // trailing garbage after a valid prefix
+        {"nan", "174.7633"},       // non-finite, but parses as a number
+        {"-36.8485", "inf"},       {"-36.8485", "-inf"},
+    };
+    for (const auto &[lat, lng] : cases)
+    {
+        g_captured.reset();
+        g_call_count = 0;
+        feed(makeMsg("3", "A12345", "", "", "", "", lat, lng));
+        INFO("lat='" << lat << "' lng='" << lng << "'");
+        REQUIRE(g_call_count == 1);
+        CHECK_FALSE(g_captured->getPosition().getValid());
+    }
+}
+
+TEST_CASE_METHOD(ParserFixture, "Type 3 out-of-range coordinates leave position unset", "[parser][coords]")
+{
+    const std::pair<const char *, const char *> cases[] = {
+        {"90.001", "0"},
+        {"-90.001", "0"},
+        {"0", "180.001"},
+        {"0", "-180.001"},
+    };
+    for (const auto &[lat, lng] : cases)
+    {
+        g_captured.reset();
+        g_call_count = 0;
+        feed(makeMsg("3", "A12345", "", "", "", "", lat, lng));
+        INFO("lat='" << lat << "' lng='" << lng << "'");
+        REQUIRE(g_call_count == 1);
+        CHECK_FALSE(g_captured->getPosition().getValid());
+    }
+}
+
+TEST_CASE_METHOD(ParserFixture, "Type 3 boundary coordinates are accepted", "[parser][coords]")
+{
+    feed(makeMsg("3", "A12345", "", "", "", "", "-90", "180"));
+    REQUIRE(g_call_count == 1);
+    Point p = g_captured->getPosition();
+    CHECK(p.getValid());
+    CHECK(p.getLatitude() == Approx(-90.0));
+    CHECK(p.getLongitude() == Approx(180.0));
+}
+
+TEST_CASE_METHOD(ParserFixture, "Type 3 garbage coordinates do not discard a usable altitude", "[parser][coords]")
+{
+    feed(makeMsg("3", "A12345", "", "35000", "", "", "not-a-lat", "174.7633"));
+    REQUIRE(g_call_count == 1);
+    CHECK_FALSE(g_captured->getPosition().getValid());
+    CHECK(g_captured->validAltitude());
+    CHECK(g_captured->getAltitude() == 35000);
+}
+
+// ---------------------------------------------------------------------------
 // Truncated / malformed messages
 // ---------------------------------------------------------------------------
 

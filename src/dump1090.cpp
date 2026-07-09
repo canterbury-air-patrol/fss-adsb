@@ -2,9 +2,12 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <charconv>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <sstream>
 #include <iostream>
@@ -163,6 +166,27 @@ static auto sbs1_to_ul(const std::string &s, int base = 10) -> unsigned long
     return std::strtoul(s.c_str(), nullptr, base);
 }
 
+constexpr double max_latitude = 90.0;
+constexpr double max_longitude = 180.0;
+
+/* Parse a latitude/longitude field, rejecting everything strtod would let
+ * through: unparseable text and trailing garbage (strtod returns 0.0, placing
+ * the aircraft at Null Island), "nan"/"inf" (which both strtod and from_chars
+ * parse as numbers), and magnitudes beyond the coordinate's range. from_chars
+ * is also locale-independent, where strtod's decimal point follows
+ * LC_NUMERIC. */
+static auto sbs1_to_coord(const std::string &s, double limit) -> std::optional<double>
+{
+    double v = 0.0;
+    const char *end = s.c_str() + s.size();
+    auto [ptr, ec] = std::from_chars(s.c_str(), end, v);
+    if (ec != std::errc{} || ptr != end || !std::isfinite(v) || v < -limit || v > limit)
+    {
+        return std::nullopt;
+    }
+    return v;
+}
+
 /* Parse a signed altitude string and clamp to [0, UINT32_MAX].
  * Negative values (e.g. "-100" for Schiphol at -13 ft MSL) become 0 rather
  * than wrapping to a huge uint32 via strtoul. Parsed as long long because on
@@ -225,20 +249,26 @@ void dump1090::processMessage(const std::string &t_msg)
         switch (strtol(data[sbs1_field_id].c_str(), nullptr, sbs1_id_base))
         {
             case sbs1_id_ident: adsb.setCallsign(data[sbs1_field_callsign]); break;
-            case sbs1_id_airborne_pos:
-                if (!data[sbs1_field_lat].empty() && !data[sbs1_field_lng].empty())
+            case sbs1_id_airborne_pos: {
+                /* Both coordinates must parse cleanly and be in range; on any
+                 * failure the position stays unset rather than becoming a
+                 * "valid" garbage fix (the altitude below may still be
+                 * usable). */
+                auto lat = sbs1_to_coord(data[sbs1_field_lat], max_latitude);
+                auto lng = sbs1_to_coord(data[sbs1_field_lng], max_longitude);
+                if (lat.has_value() && lng.has_value())
                 {
-                    adsb.setPosition(Point(std::strtod(data[sbs1_field_lat].c_str(), nullptr),
-                                           std::strtod(data[sbs1_field_lng].c_str(), nullptr)));
+                    adsb.setPosition(Point(*lat, *lng));
                 }
-                /* Guard like lat/lng above: an empty altitude field parses to 0,
-                 * and setting it would mark altitude valid, reporting an aircraft
-                 * at 0 ft when its real altitude is simply absent from this MSG. */
+                /* An empty altitude field parses to 0, and setting it would
+                 * mark altitude valid, reporting an aircraft at 0 ft when its
+                 * real altitude is simply absent from this MSG. */
                 if (!data[sbs1_field_altitude].empty())
                 {
                     adsb.setAltitude(sbs1_to_altitude(data[sbs1_field_altitude]));
                 }
                 break;
+            }
             case sbs1_id_airborne_vel:
                 /* Guard each field like altitude above: dump1090 emits velocity
                  * messages with missing fields, and an empty field parsing to 0
