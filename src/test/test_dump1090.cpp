@@ -6,6 +6,7 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include <arpa/inet.h>
 #include <dirent.h>
@@ -23,20 +24,21 @@
 // reset before each feed() call.
 //
 // In the parser tests capture_cb runs synchronously on the test thread, but in
-// the reconnect lifecycle tests it runs on dump1090's receive thread while the
+// the reconnect/framing tests it runs on dump1090's receive thread while the
 // test thread polls. g_call_count is atomic so that read/write is race-free, and
-// because capture_cb writes g_captured *before* the atomic increment and the
-// test only reads g_captured after observing the count, the increment also
-// publishes g_captured (a happens-before edge) -- so g_captured needs no
-// separate lock.
+// because capture_cb writes g_captured and g_all *before* the atomic increment
+// and the test only reads them after observing the count, the increment also
+// publishes them (a happens-before edge) -- so they need no separate lock.
 namespace {
 
 std::optional<ADSBData> g_captured;
+std::vector<ADSBData> g_all;
 std::atomic<int> g_call_count = 0;
 
 void capture_cb(const ADSBData &adsb)
 {
     g_captured = adsb;
+    g_all.push_back(adsb);
     g_call_count++;
 }
 
@@ -48,6 +50,7 @@ struct ParserFixture {
     ParserFixture()
     {
         g_captured.reset();
+        g_all.clear();
         g_call_count = 0;
     }
 
@@ -707,6 +710,114 @@ TEST_CASE("parse_port", "[args]")
     CHECK_FALSE(args::parse_port("30003x")); // trailing garbage
     CHECK_FALSE(args::parse_port("abc"));    // non-numeric
     CHECK_FALSE(args::parse_port("-1"));     // negative
+}
+
+// ---------------------------------------------------------------------------
+// Line framing (processMessages over a real socket)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Feed raw bytes through a loopback socket into processMessages, exercising
+// the recv/CRLF-splitting/partial-line path rather than test_processMessage.
+struct SocketFeeder {
+    int listen_fd{-1};
+    int conn{-1};
+    std::optional<dump1090> dut{};
+
+    SocketFeeder()
+    {
+        g_captured.reset();
+        g_all.clear();
+        g_call_count = 0;
+        auto [lfd, port] = open_loopback_listener();
+        listen_fd = lfd;
+        dut.emplace("127.0.0.1", port, capture_cb);
+        conn = accept(listen_fd, nullptr, nullptr);
+        REQUIRE(conn >= 0);
+        REQUIRE(dut->test_isConnected());
+    }
+    SocketFeeder(const SocketFeeder &) = delete;
+    SocketFeeder(SocketFeeder &&) = delete;
+    auto operator=(const SocketFeeder &) -> SocketFeeder & = delete;
+    auto operator=(SocketFeeder &&) -> SocketFeeder & = delete;
+    ~SocketFeeder()
+    {
+        dut->disconnect();
+        if (conn >= 0)
+        {
+            close(conn);
+        }
+        close(listen_fd);
+    }
+
+    void send(const std::string &bytes)
+    {
+        REQUIRE(write(conn, bytes.data(), bytes.size()) == static_cast<ssize_t>(bytes.size()));
+    }
+};
+
+} // namespace
+
+TEST_CASE("framing: a line split across two writes is reassembled", "[framing]")
+{
+    SocketFeeder feeder;
+    std::string line = makeMsg("1", "ABC123", "QFA123") + "\n";
+
+    feeder.send(line.substr(0, 20));
+    // No newline received yet, so nothing can have been delivered.
+    CHECK(g_call_count == 0);
+
+    feeder.send(line.substr(20));
+    REQUIRE(wait_for([] { return g_call_count >= 1; }, std::chrono::seconds(2)));
+    CHECK(g_call_count == 1);
+    CHECK(g_captured->getICAOAddress() == 0xABC123);
+    CHECK(g_captured->getCallsign() == "QFA123");
+}
+
+TEST_CASE("framing: multiple lines in one write are all parsed, in order", "[framing]")
+{
+    SocketFeeder feeder;
+    feeder.send(makeMsg("1", "ABC123", "QFA123") + "\n" + makeMsg("6", "DEF456", "", "", "", "", "", "", "", "7700") +
+                "\n");
+
+    REQUIRE(wait_for([] { return g_call_count >= 2; }, std::chrono::seconds(2)));
+    CHECK(g_call_count == 2);
+    REQUIRE(g_all.size() == 2);
+    CHECK(g_all[0].getICAOAddress() == 0xABC123);
+    CHECK(g_all[1].getICAOAddress() == 0xDEF456);
+    CHECK(g_all[1].getSquawk() == 7700);
+}
+
+TEST_CASE("framing: CRLF and bare LF both terminate lines", "[framing]")
+{
+    SocketFeeder feeder;
+    // The empty segment between \r and \n must not become a (rejected) empty
+    // message or, worse, a delivered one: exactly two callbacks.
+    feeder.send(makeMsg("1", "ABC123", "QFA123") + "\r\n" + makeMsg("1", "DEF456", "JST42") + "\n");
+
+    REQUIRE(wait_for([] { return g_call_count >= 2; }, std::chrono::seconds(2)));
+    CHECK(g_call_count == 2);
+    REQUIRE(g_all.size() == 2);
+    CHECK(g_all[0].getICAOAddress() == 0xABC123);
+    CHECK(g_all[1].getICAOAddress() == 0xDEF456);
+}
+
+TEST_CASE("framing: an overlong junk run does not break subsequent lines", "[framing]")
+{
+    SocketFeeder feeder;
+    // More than buffer_length (2048) bytes with no newline triggers the
+    // overflow discard; the mid-line fragment the loop resumes into must not
+    // reach the callback, and the next real line must still parse.
+    feeder.send(std::string(5000, 'X'));
+    // Let the receive thread consume (and discard) the junk before the valid
+    // line arrives, so the resume-mid-line path is actually exercised.
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    feeder.send("\n" + makeMsg("1", "ABC123", "QFA123") + "\n");
+    REQUIRE(wait_for([] { return g_call_count >= 1; }, std::chrono::seconds(2)));
+    CHECK(g_call_count == 1);
+    CHECK(g_captured->getICAOAddress() == 0xABC123);
 }
 
 // ---------------------------------------------------------------------------
