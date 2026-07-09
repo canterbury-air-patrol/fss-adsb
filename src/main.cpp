@@ -38,6 +38,11 @@ void handle_adsb_data(const ADSBData &adsb)
     /* Hold the lock only for the record fold. reportAircraft() is a blocking
      * TLS send; doing it under the lock would let a stalled server block
      * evict_stale_aircraft() — and with it the whole main loop. */
+    /* The message carries the timestamp of the recv() that produced it. Using
+     * it for the report (rather than stamping "now" here) keeps the report
+     * honest when this blocking send path backs up: a position that queued for
+     * minutes must not be reported as seen 0 seconds ago, now. */
+    uint64_t received = adsb.getLastSeen();
     std::optional<adsb_report::position_report> report;
     {
         std::unique_lock<std::mutex> lk(known_aircraft_lock);
@@ -46,7 +51,7 @@ void handle_adsb_data(const ADSBData &adsb)
         {
             aircraft = std::make_shared<ADSBData>(adsb.getICAOAddress());
         }
-        aircraft->setLastSeen(flight_safety_system::fss_current_timestamp());
+        aircraft->setLastSeen(received);
         adsb_report::update_record(*aircraft, adsb);
         FSS_LOG_DEBUG(log_component, "Callsign: " << aircraft->getCallsign());
         report = adsb_report::build_report(*aircraft, adsb);
@@ -57,12 +62,12 @@ void handle_adsb_data(const ADSBData &adsb)
                                                                << " (" << report->callsign << ")");
         fss->reportAircraft(report->position, report->altitude, report->heading, report->hor_vel, report->ver_vel,
                             report->icao_address, report->callsign, report->squawk,
-                            /* Time since last contact (0), we just saw it now */
-                            0, report->flags,
+                            adsb_report::derive_tslc(received, flight_safety_system::fss_current_timestamp()),
+                            report->flags,
                             /* dump1090 reports barometric pressure altitude (QNE/standard datum), not QNH */
                             0,
                             /* Type is probably known */
-                            0, flight_safety_system::fss_current_timestamp());
+                            0, received);
     }
 }
 

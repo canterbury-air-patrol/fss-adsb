@@ -93,7 +93,7 @@ private:
      * receive thread, which sets it to -1 on disconnect; must be atomic. */
     std::atomic<int> fd{-1};
     uint64_t last_tried{0};
-    void processMessage(const std::string &msg);
+    void processMessage(const std::string &msg, uint64_t received);
     notify_dump1090_adsb_data_cb adsb_cb{nullptr};
     void connect_to_dump1090();
     static constexpr uint64_t retry_delay_start = 1000;
@@ -118,7 +118,7 @@ public:
     void processMessages();
     void disconnect();
 #ifdef FSS_ADSB_TESTING
-    void test_processMessage(const std::string &msg) { processMessage(msg); }
+    void test_processMessage(const std::string &msg, uint64_t received = 0) { processMessage(msg, received); }
     auto test_isConnected() -> bool { return this->fd != -1; }
 #endif
 };
