@@ -157,11 +157,21 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 4 (airborne vel) sets speed, heading a
     feed(makeMsg("4", "A12345", "", "", "450", "270", "", "", "-1024"));
     REQUIRE(g_call_count == 1);
     CHECK(g_captured->validSpeed());
-    CHECK(g_captured->getSpeed() == 450);
+    CHECK(g_captured->getSpeed() == Approx(450.0));
     CHECK(g_captured->validHeading());
-    CHECK(g_captured->getHeading() == 270);
+    CHECK(g_captured->getHeading() == Approx(270.0));
     CHECK(g_captured->validVertVel());
     CHECK(g_captured->getVertVel() == -1024);
+}
+
+TEST_CASE_METHOD(ParserFixture, "MSG type 4 fractional speed and track are preserved", "[parser][valid]")
+{
+    // SBS-1 emits these with a decimal fraction; the integer parse used to
+    // stop at the dot, reporting 270.5 deg as 27000 centidegrees.
+    feed(makeMsg("4", "A12345", "", "", "145.6", "270.5", "", "", "-1024"));
+    REQUIRE(g_call_count == 1);
+    CHECK(g_captured->getSpeed() == Approx(145.6));
+    CHECK(g_captured->getHeading() == Approx(270.5));
 }
 
 TEST_CASE_METHOD(ParserFixture, "MSG type 3 negative altitude clamps to 0", "[parser][clamp]")
@@ -190,20 +200,42 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 4 vert rate too low clamps to INT16_MI
     CHECK(g_captured->getVertVel() == INT16_MIN);
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG type 4 heading > UINT16_MAX clamps to UINT16_MAX", "[parser][clamp]")
+TEST_CASE_METHOD(ParserFixture, "MSG type 4 track outside 0-360 leaves heading unset", "[parser][clamp]")
 {
-    feed(makeMsg("4", "A12345", "", "", "0", "70000", "", "", "0"));
-    REQUIRE(g_call_count == 1);
-    CHECK(g_captured->validHeading());
-    CHECK(g_captured->getHeading() == UINT16_MAX);
+    // A track of 70000 used to be "clamped" to UINT16_MAX; corrupt data is
+    // now rejected rather than reshaped into a plausible-looking heading.
+    for (const char *track : {"-1", "360.1", "70000", "garbage"})
+    {
+        g_captured.reset();
+        g_call_count = 0;
+        feed(makeMsg("4", "A12345", "", "", "0", track, "", "", "0"));
+        INFO("track '" << track << "'");
+        REQUIRE(g_call_count == 1);
+        CHECK_FALSE(g_captured->validHeading());
+    }
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG type 4 ground speed > UINT32_MAX clamps to UINT32_MAX", "[parser][clamp]")
+TEST_CASE_METHOD(ParserFixture, "MSG type 4 negative or garbage ground speed leaves speed unset", "[parser][clamp]")
+{
+    for (const char *gs : {"-5", "garbage", "145.6x"})
+    {
+        g_captured.reset();
+        g_call_count = 0;
+        feed(makeMsg("4", "A12345", "", "", gs, "0", "", "", "0"));
+        INFO("ground speed '" << gs << "'");
+        REQUIRE(g_call_count == 1);
+        CHECK_FALSE(g_captured->validSpeed());
+    }
+}
+
+TEST_CASE_METHOD(ParserFixture, "MSG type 4 huge ground speed is stored; the report conversion clamps",
+                 "[parser][clamp]")
 {
     feed(makeMsg("4", "A12345", "", "", "99999999999", "0", "", "", "0"));
     REQUIRE(g_call_count == 1);
     CHECK(g_captured->validSpeed());
-    CHECK(g_captured->getSpeed() == UINT32_MAX);
+    CHECK(g_captured->getSpeed() == Approx(99999999999.0));
+    // knots_to_cm_per_s clamps to the uint16 wire field (see [units]).
 }
 
 TEST_CASE_METHOD(ParserFixture, "MSG type 6 squawk > UINT16_MAX clamps to UINT16_MAX", "[parser][clamp]")
@@ -468,10 +500,15 @@ TEST_CASE_METHOD(ParserFixture, "Non-numeric transmission type treated as type 0
 TEST_CASE("knots -> cm/s", "[units]")
 {
     CHECK(adsb_units::knots_to_cm_per_s(0) == 0);
-    // 450 kt * 51.444 cm/s/kt = 23149.8 -> truncates to 23149
-    CHECK(adsb_units::knots_to_cm_per_s(450) == 23149);
+    // 450 kt * 1852/36 cm/s/kt = 23150.0 exactly (51.444 used to truncate
+    // this to 23149)
+    CHECK(adsb_units::knots_to_cm_per_s(450) == 23150);
+    // Fractional knots round to the nearest cm/s: 145.6 kt = 7490.31 cm/s
+    CHECK(adsb_units::knots_to_cm_per_s(145.6) == 7490);
     // Out-of-range input clamps to UINT16_MAX instead of wrapping
     CHECK(adsb_units::knots_to_cm_per_s(100000) == UINT16_MAX);
+    // Negative (invalid) input clamps to 0 rather than rounding to garbage
+    CHECK(adsb_units::knots_to_cm_per_s(-5) == 0);
 }
 
 TEST_CASE("feet/minute -> cm/s preserves sign", "[units]")
@@ -487,17 +524,20 @@ TEST_CASE("degrees -> centidegrees", "[units]")
 {
     CHECK(adsb_units::deg_to_centideg(0) == 0);
     CHECK(adsb_units::deg_to_centideg(270) == 27000);
+    // Fractional degrees survive: SBS-1 emits tracks like "270.5"
+    CHECK(adsb_units::deg_to_centideg(270.5) == 27050);
     CHECK(adsb_units::deg_to_centideg(359) == 35900);
     // Out-of-range heading clamps to UINT16_MAX instead of wrapping
     CHECK(adsb_units::deg_to_centideg(1000) == UINT16_MAX);
-    // 42949673 * 100 wraps uint32_t to 4; clamping must still see it as huge.
     CHECK(adsb_units::deg_to_centideg(42949673) == UINT16_MAX);
+    // Negative (invalid) input clamps to 0
+    CHECK(adsb_units::deg_to_centideg(-1) == 0);
 }
 
 // The conversions are constexpr: these fail to compile if that regresses.
-static_assert(adsb_units::knots_to_cm_per_s(450) == 23149, "knots conversion must be constexpr");
+static_assert(adsb_units::knots_to_cm_per_s(450) == 23150, "knots conversion must be constexpr");
 static_assert(adsb_units::ft_per_min_to_cm_per_s(-1024) == -520, "vertical-rate conversion must be constexpr");
-static_assert(adsb_units::deg_to_centideg(270) == 27000, "heading conversion must be constexpr");
+static_assert(adsb_units::deg_to_centideg(270.5) == 27050, "heading conversion must be constexpr");
 
 // ---------------------------------------------------------------------------
 // Staleness

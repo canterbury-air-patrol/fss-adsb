@@ -23,9 +23,12 @@ private:
     bool callsign_set{false};
     uint32_t altitude{0};
     bool altitude_set{false};
-    uint32_t speed{0};
+    /* Speed (knots) and heading (degrees) are stored as the wire carries
+     * them — with a decimal fraction — so the report-time conversion to cm/s
+     * and centidegrees keeps the resolution those units pay for. */
+    double speed{0.0};
     bool speed_set{false};
-    uint16_t heading{0};
+    double heading{0.0};
     bool heading_set{false};
     Point pos{};
     int16_t vert_vel{0};
@@ -52,19 +55,19 @@ public:
     };
     [[nodiscard]] auto getAltitude() const -> uint32_t { return this->altitude; };
     [[nodiscard]] auto validAltitude() const -> bool { return this->altitude_set; };
-    void setSpeed(uint32_t t_speed)
+    void setSpeed(double t_speed)
     {
         this->speed = t_speed;
         this->speed_set = true;
     };
-    [[nodiscard]] auto getSpeed() const -> uint32_t { return this->speed; };
+    [[nodiscard]] auto getSpeed() const -> double { return this->speed; };
     [[nodiscard]] auto validSpeed() const -> bool { return this->speed_set; };
-    void setHeading(uint16_t t_heading)
+    void setHeading(double t_heading)
     {
         this->heading = t_heading;
         this->heading_set = true;
     };
-    [[nodiscard]] auto getHeading() const -> uint16_t { return this->heading; };
+    [[nodiscard]] auto getHeading() const -> double { return this->heading; };
     [[nodiscard]] auto validHeading() const -> bool { return this->heading_set; };
     void setVertVel(int16_t t_vert_vel)
     {
