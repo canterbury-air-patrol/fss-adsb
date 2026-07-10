@@ -6,6 +6,8 @@ fss-adsb (1.0.1) UNRELEASED; urgency=medium
     enabled by default. An example configuration is installed under
     /usr/share/doc/fss-adsb/examples/.
   * main: add --help/-h and --version.
+  * debian: add an extended Description (lintian
+    extended-description-is-empty).
 
  -- Scott Parlane <sjp@canterburyairpatrol.org>  Fri, 10 Jul 2026 00:00:00 +0000
 

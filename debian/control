@@ -9,3 +9,8 @@ Package: fss-adsb
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, libfss (>= 1.0.2), libfss-transport (>= 1.0.2), libfss-transport-ssl (>= 1.0.2), libfss-client-ssl (>= 1.0.2)
 Description: ADS-B integration for FSS
+ Consumes the SBS-1 BaseStation output of a dump1090 receiver (port 30003)
+ and reports the aircraft it hears as position reports to a Flight Safety
+ System server over TLS, so nearby ADS-B traffic is visible to all FSS
+ clients. Run one instance per FSS server; a templated systemd unit
+ (fss-adsb@.service) is included.
