@@ -10,12 +10,17 @@
  * out-of-range (or garbage) input cannot silently wrap around. */
 namespace adsb_units {
 
-/* Ground speed: knots -> cm/s (FSS horizontal velocity). */
-constexpr auto knots_to_cm_per_s(uint32_t knots) -> uint16_t
+/* Ground speed: knots -> cm/s (FSS horizontal velocity). One knot is exactly
+ * 1852 m/h = 1852/36 cm/s; the result is rounded, not truncated, so the
+ * fractional knots SBS-1 carries survive the conversion. */
+constexpr auto knots_to_cm_per_s(double knots) -> uint16_t
 {
-    constexpr double knots_to_cms = 51.444;
-    double cms = knots * knots_to_cms;
-    return static_cast<uint16_t>(std::min(cms, static_cast<double>(std::numeric_limits<uint16_t>::max())));
+    constexpr double knots_to_cms = 1852.0 / 36.0;
+    double cms = std::clamp(knots * knots_to_cms, 0.0, static_cast<double>(std::numeric_limits<uint16_t>::max()));
+    /* The +0.5 round-half-up is exact here because the clamp above makes cms
+     * non-negative (the value lround would fix is a negative one), and lround
+     * is not constexpr in C++17. */
+    return static_cast<uint16_t>(cms + 0.5); // NOLINT(bugprone-incorrect-roundings)
 }
 
 /* Vertical rate: feet/minute -> cm/s (FSS vertical velocity, signed). */
@@ -27,13 +32,14 @@ constexpr auto ft_per_min_to_cm_per_s(int16_t ft_per_min) -> int16_t
                                            static_cast<double>(std::numeric_limits<int16_t>::max())));
 }
 
-/* Heading: degrees -> centidegrees (FSS heading). The multiplication is done in
- * uint64_t so it cannot overflow before the clamp. */
-constexpr auto deg_to_centideg(uint32_t deg) -> uint16_t
+/* Heading: degrees -> centidegrees (FSS heading), rounded so the fractional
+ * degrees SBS-1 carries survive: 270.5 degrees becomes 27050. */
+constexpr auto deg_to_centideg(double deg) -> uint16_t
 {
-    constexpr uint32_t scale = 100;
-    uint64_t cdeg = static_cast<uint64_t>(deg) * scale;
-    return static_cast<uint16_t>(std::min<uint64_t>(cdeg, std::numeric_limits<uint16_t>::max()));
+    constexpr double scale = 100.0;
+    double cdeg = std::clamp(deg * scale, 0.0, static_cast<double>(std::numeric_limits<uint16_t>::max()));
+    /* Same non-negative round-half-up as knots_to_cm_per_s above. */
+    return static_cast<uint16_t>(cdeg + 0.5); // NOLINT(bugprone-incorrect-roundings)
 }
 
 } // namespace adsb_units

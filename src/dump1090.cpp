@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <optional>
 #include <string>
 #include <sstream>
@@ -183,19 +184,21 @@ static auto sbs1_to_address(const std::string &s) -> std::optional<uint32_t>
 
 constexpr double max_latitude = 90.0;
 constexpr double max_longitude = 180.0;
+constexpr double max_track = 360.0;
+constexpr double max_speed = std::numeric_limits<double>::max();
 
-/* Parse a latitude/longitude field, rejecting everything strtod would let
- * through: unparseable text and trailing garbage (strtod returns 0.0, placing
- * the aircraft at Null Island), "nan"/"inf" (which both strtod and from_chars
- * parse as numbers), and magnitudes beyond the coordinate's range. from_chars
- * is also locale-independent, where strtod's decimal point follows
- * LC_NUMERIC. */
-static auto sbs1_to_coord(const std::string &s, double limit) -> std::optional<double>
+/* Parse a decimal field (lat/lng, track, ground speed), rejecting everything
+ * strtod would let through: unparseable text and trailing garbage (strtod
+ * returns 0.0, which put a corrupt position at Null Island), "nan"/"inf"
+ * (which both strtod and from_chars parse as numbers), and values outside
+ * [min, max]. from_chars is also locale-independent, where strtod's decimal
+ * point follows LC_NUMERIC. */
+static auto sbs1_to_double(const std::string &s, double min, double max) -> std::optional<double>
 {
     double v = 0.0;
     const char *end = s.c_str() + s.size();
     auto [ptr, ec] = std::from_chars(s.c_str(), end, v);
-    if (ec != std::errc{} || ptr != end || !std::isfinite(v) || v < -limit || v > limit)
+    if (ec != std::errc{} || ptr != end || !std::isfinite(v) || v < min || v > max)
     {
         return std::nullopt;
     }
@@ -235,16 +238,6 @@ static auto sbs1_to_u16(const std::string &s) -> uint16_t
         std::min(v, static_cast<unsigned long>(UINT16_MAX))); // NOLINT(cppcoreguidelines-narrowing-conversions)
 }
 
-/* Parse a ground-speed string and clamp to [0, UINT32_MAX].
- * Out-of-range garbage must not silently wrap via the unsigned long ->
- * uint32_t narrowing (a no-op clamp on 32-bit unsigned long, by design). */
-static auto sbs1_to_speed(const std::string &s) -> uint32_t
-{
-    unsigned long v = std::strtoul(s.c_str(), nullptr, 10);
-    return static_cast<uint32_t>(
-        std::min(v, static_cast<unsigned long>(UINT32_MAX))); // NOLINT(cppcoreguidelines-narrowing-conversions)
-}
-
 void dump1090::processMessage(const std::string &t_msg, uint64_t t_received)
 {
     std::stringstream ss(t_msg);
@@ -279,8 +272,8 @@ void dump1090::processMessage(const std::string &t_msg, uint64_t t_received)
                  * failure the position stays unset rather than becoming a
                  * "valid" garbage fix (the altitude below may still be
                  * usable). */
-                auto lat = sbs1_to_coord(data[sbs1_field_lat], max_latitude);
-                auto lng = sbs1_to_coord(data[sbs1_field_lng], max_longitude);
+                auto lat = sbs1_to_double(data[sbs1_field_lat], -max_latitude, max_latitude);
+                auto lng = sbs1_to_double(data[sbs1_field_lng], -max_longitude, max_longitude);
                 if (lat.has_value() && lng.has_value())
                 {
                     adsb.setPosition(Point(*lat, *lng));
@@ -294,24 +287,30 @@ void dump1090::processMessage(const std::string &t_msg, uint64_t t_received)
                 }
                 break;
             }
-            case sbs1_id_airborne_vel:
-                /* Guard each field like altitude above: dump1090 emits velocity
-                 * messages with missing fields, and an empty field parsing to 0
-                 * must not become a "valid" speed of 0 kt or a heading of due
-                 * north. */
-                if (!data[sbs1_field_groundspeed].empty())
+            case sbs1_id_airborne_vel: {
+                /* SBS-1 emits ground speed and track with a decimal fraction
+                 * ("145.6", "270.5"); parsing them as integers discarded
+                 * resolution the report's cm/s and centidegree units pay for.
+                 * The strict parse also keeps the empty-field rule: dump1090
+                 * emits velocity messages with missing fields, and an absent
+                 * field must not become a "valid" speed of 0 kt or a heading
+                 * of due north. */
+                auto speed = sbs1_to_double(data[sbs1_field_groundspeed], 0.0, max_speed);
+                if (speed.has_value())
                 {
-                    adsb.setSpeed(sbs1_to_speed(data[sbs1_field_groundspeed]));
+                    adsb.setSpeed(*speed);
                 }
-                if (!data[sbs1_field_track].empty())
+                auto track = sbs1_to_double(data[sbs1_field_track], 0.0, max_track);
+                if (track.has_value())
                 {
-                    adsb.setHeading(sbs1_to_u16(data[sbs1_field_track]));
+                    adsb.setHeading(*track);
                 }
                 if (!data[sbs1_field_vertrate].empty())
                 {
                     adsb.setVertVel(sbs1_to_vertrate(data[sbs1_field_vertrate]));
                 }
                 break;
+            }
             case sbs1_id_surveillence_id:
                 if (!data[sbs1_field_squawk].empty())
                 {
