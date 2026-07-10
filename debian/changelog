@@ -1,3 +1,13 @@
+fss-adsb (1.0.1) UNRELEASED; urgency=medium
+
+  * debian: ship a templated systemd unit, fss-adsb@.service. The instance
+    name selects an environment file /etc/fss-adsb/<instance>.conf, matching
+    the one-instance-per-FSS-server deployment model; instances are not
+    enabled by default. An example configuration is installed under
+    /usr/share/doc/fss-adsb/examples/.
+
+ -- Scott Parlane <sjp@canterburyairpatrol.org>  Fri, 10 Jul 2026 00:00:00 +0000
+
 fss-adsb (1.0.0) unstable; urgency=medium
 
   * dump1090: close the socket when the receive thread observes a dropped

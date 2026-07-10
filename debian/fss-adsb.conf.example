@@ -1,0 +1,24 @@
+# Configuration for one fss-adsb@<instance>.service unit.
+#
+# Copy to /etc/fss-adsb/<instance>.conf, then:
+#   systemctl enable --now fss-adsb@<instance>
+#
+# Run one instance per FSS server. DUMP1090_HOST/DUMP1090_PORT/FSS_HOST/
+# FSS_PORT follow the same convention as docker/entrypoint.sh.
+
+# Where dump1090 serves its SBS-1 BaseStation output. Port 30003 is
+# dump1090's default; port 30002 is the raw AVR format, which fss-adsb
+# cannot parse.
+DUMP1090_HOST=localhost
+DUMP1090_PORT=30003
+
+# The FSS server to report to. The host name must exactly match the
+# certificate the server presents.
+FSS_HOST=fss-server
+FSS_PORT=20202
+
+# TLS credentials: the CA public key and a client keypair signed by the
+# flight-safety-system CA.
+CA_PUBLIC_KEY=/etc/fss-adsb/ca.public.pem
+PRIVATE_KEY=/etc/fss-adsb/client.private.pem
+PUBLIC_KEY=/etc/fss-adsb/client.public.pem

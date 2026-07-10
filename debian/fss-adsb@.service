@@ -1,0 +1,18 @@
+[Unit]
+Description=FSS ADS-B reporter (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# One instance per FSS server (see the README's Redundancy section); the
+# instance name selects the configuration file. An example configuration
+# ships in /usr/share/doc/fss-adsb/examples/.
+EnvironmentFile=/etc/fss-adsb/%i.conf
+ExecStart=/usr/bin/fss-adsb ${DUMP1090_HOST} ${DUMP1090_PORT} ${FSS_HOST} ${FSS_PORT} ${CA_PUBLIC_KEY} ${PRIVATE_KEY} ${PUBLIC_KEY}
+# The binary handles reconnect/backoff for both peers itself and exits
+# cleanly on SIGTERM, so on-failure is all the supervision it needs.
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
