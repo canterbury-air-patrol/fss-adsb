@@ -154,8 +154,8 @@ using sbs1_msgs_ids = enum sbs1_msg_ids_e : std::uint8_t {
     sbs1_id_surface_pos = 2,
     sbs1_id_airborne_pos = 3,
     sbs1_id_airborne_vel = 4,
-    sbs1_id_surveillence_alt = 5,
-    sbs1_id_surveillence_id = 6,
+    sbs1_id_surveillance_alt = 5,
+    sbs1_id_surveillance_id = 6,
     sbs1_id_air_to_air = 7,
     sbs1_id_all_call_reply = 8,
 };
@@ -311,7 +311,7 @@ void dump1090::processMessage(const std::string &t_msg, uint64_t t_received)
                 }
                 break;
             }
-            case sbs1_id_surveillence_id:
+            case sbs1_id_surveillance_id:
                 if (!data[sbs1_field_squawk].empty())
                 {
                     adsb.setSquawk(sbs1_to_u16(data[sbs1_field_squawk]));
@@ -323,7 +323,7 @@ void dump1090::processMessage(const std::string &t_msg, uint64_t t_received)
                     adsb.setAltitude(sbs1_to_altitude(data[sbs1_field_altitude]));
                 }
                 break;
-            case sbs1_id_surveillence_alt:
+            case sbs1_id_surveillance_alt:
             case sbs1_id_air_to_air:
                 /* MSG,5 (surveillance alt) and MSG,7 (air-to-air) carry an
                  * altitude but no position. Aircraft with Mode S but no ADS-B

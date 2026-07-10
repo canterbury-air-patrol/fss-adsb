@@ -34,7 +34,7 @@ void sigIntHandler(__attribute__((unused)) int signum)
     running = 0;
 }
 
-std::map<uint32_t, std::shared_ptr<ADSBData>> known_aircraft;
+std::map<uint32_t, ADSBData> known_aircraft;
 std::mutex known_aircraft_lock;
 
 void handle_adsb_data(const ADSBData &adsb)
@@ -51,15 +51,12 @@ void handle_adsb_data(const ADSBData &adsb)
     std::optional<adsb_report::position_report> report;
     {
         std::unique_lock<std::mutex> lk(known_aircraft_lock);
-        auto &aircraft = known_aircraft[adsb.getICAOAddress()];
-        if (aircraft == nullptr)
-        {
-            aircraft = std::make_shared<ADSBData>(adsb.getICAOAddress());
-        }
-        aircraft->setLastSeen(received);
-        adsb_report::update_record(*aircraft, adsb);
-        FSS_LOG_DEBUG(log_component, "Callsign: " << aircraft->getCallsign());
-        report = adsb_report::build_report(*aircraft, adsb);
+        auto [it, inserted] = known_aircraft.try_emplace(adsb.getICAOAddress(), adsb.getICAOAddress());
+        ADSBData &aircraft = it->second;
+        aircraft.setLastSeen(received);
+        adsb_report::update_record(aircraft, adsb);
+        FSS_LOG_DEBUG(log_component, "Callsign: " << aircraft.getCallsign());
+        report = adsb_report::build_report(aircraft, adsb);
     }
     if (report)
     {
@@ -83,10 +80,10 @@ void evict_stale_aircraft()
     std::unique_lock<std::mutex> lk(known_aircraft_lock);
     for (auto it = known_aircraft.begin(); it != known_aircraft.end();)
     {
-        if (it->second->isStale(now, stale_window_ms))
+        if (it->second.isStale(now, stale_window_ms))
         {
             FSS_LOG_INFO(log_component,
-                         "Evicting stale aircraft " << std::uppercase << std::hex << it->second->getICAOAddress());
+                         "Evicting stale aircraft " << std::uppercase << std::hex << it->second.getICAOAddress());
             it = known_aircraft.erase(it);
         }
         else
