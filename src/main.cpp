@@ -1,3 +1,7 @@
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <iostream>
 #include <csignal>
 #include <cstdlib>
@@ -7,6 +11,7 @@
 #include <optional>
 
 #include <string>
+#include <string_view>
 #include <unistd.h>
 
 #include "fss.hpp"
@@ -91,13 +96,30 @@ void evict_stale_aircraft()
     }
 }
 
+constexpr const char *usage_args =
+    " dump1090-host dump1090-port fss-host fss-port ca.public.key private.key public.key";
+
 auto main(int argc, char *argv[]) -> int
 {
+    if (argc == 2)
+    {
+        std::string_view arg{argv[1]};
+        if (arg == "--help" || arg == "-h")
+        {
+            std::cout << "Usage: " << argv[0] << usage_args << "\n";
+            return EXIT_SUCCESS;
+        }
+        if (arg == "--version")
+        {
+            std::cout << "fss-adsb " << PACKAGE_VERSION << "\n";
+            return EXIT_SUCCESS;
+        }
+    }
+
     constexpr int required_args = 8;
     if (argc != required_args)
     {
-        std::cerr << "Usage: " << argv[0]
-                  << " dump1090-host dump1090-port fss-host fss-port ca.public.key private.key public.key" << "\n";
+        std::cerr << "Usage: " << argv[0] << usage_args << "\n";
         return EXIT_FAILURE;
     }
 
