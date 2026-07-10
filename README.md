@@ -30,6 +30,13 @@ This assumes that dump1090 is running on localhost with its SBS-1 BaseStation ou
 
 Note: fss-adsb consumes the SBS-1 BaseStation (CSV) output, which dump1090 serves on port 30003. Port 30002 serves the raw AVR format, which fss-adsb cannot parse.
 
+### Running under systemd
+The Debian package ships a templated unit. Copy the example configuration from `/usr/share/doc/fss-adsb/examples/fss-adsb.conf.example` to `/etc/fss-adsb/<instance>.conf`, edit it for your dump1090 and FSS server, then:
+```
+systemctl enable --now fss-adsb@<instance>
+```
+Run one instance per fss-server (see Redundancy below).
+
 ## Redundancy
 fss-adsb is not sent the server configuration messages that normal clients get (and does not act on them), so it will only connect to the server it was told about when it started.
 
