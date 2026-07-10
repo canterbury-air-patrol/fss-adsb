@@ -58,77 +58,75 @@ static auto set_nonblocking(int fd, bool enable) -> bool
     return fcntl(fd, F_SETFL, flags) != -1; // NOLINT(cppcoreguidelines-pro-type-vararg)
 }
 
-auto convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_storage *sa) -> bool
+auto resolve_candidates(const std::string &addr, uint16_t port) -> std::vector<sockaddr_storage>
 {
-    int family = AF_UNSPEC;
-    /* Try converting an IP(v4) address first. This guard mirrors the IPv6 and
-     * hostname guards below; being the first in the chain it is always-true by
-     * construction, so cppcheck's knownConditionTrueFalse is suppressed here
-     * rather than breaking the parallel structure. */
-    // cppcheck-suppress knownConditionTrueFalse
-    if (family == AF_UNSPEC)
+    std::vector<sockaddr_storage> candidates;
+
+    /* A literal IP(v4) address resolves to itself: exactly one candidate. */
     {
         struct in_addr ia = {};
         if (inet_pton(AF_INET, addr.c_str(), &ia) == 1)
         {
-            family = AF_INET;
-            auto *sa_in = as_sockaddr_in(sa);
-            memset(sa_in, 0, sizeof(struct sockaddr_in));
+            struct sockaddr_storage ss = {};
+            auto *sa_in = as_sockaddr_in(&ss);
             sa_in->sin_family = AF_INET;
             sa_in->sin_addr = ia;
+            sa_in->sin_port = htons(port);
+            candidates.push_back(ss);
+            return candidates;
         }
     }
-    /* Try converting an IPv6 address */
-    if (family == AF_UNSPEC)
+    /* Likewise a literal IPv6 address. */
     {
         struct in6_addr ia = {};
         if (inet_pton(AF_INET6, addr.c_str(), &ia) == 1)
         {
-            family = AF_INET6;
-            auto *sa_in = as_sockaddr_in6(sa);
-            memset(sa_in, 0, sizeof(struct sockaddr_in6));
+            struct sockaddr_storage ss = {};
+            auto *sa_in = as_sockaddr_in6(&ss);
             sa_in->sin6_family = AF_INET6;
             sa_in->sin6_addr = ia;
-        }
-    }
-    /* Use host name lookup (probably DNS) to resolve the name. The hints
-     * restrict the results to TCP-usable addresses of configured families
-     * (AI_ADDRCONFIG), instead of one duplicate entry per socket type. */
-    if (family == AF_UNSPEC)
-    {
-        struct addrinfo hints = {};
-        hints.ai_family = AF_UNSPEC;
-        hints.ai_socktype = SOCK_STREAM;
-        hints.ai_flags = AI_ADDRCONFIG;
-        struct addrinfo *ai = nullptr;
-
-        if (getaddrinfo(addr.c_str(), nullptr, &hints, &ai) == 0 && ai != nullptr)
-        {
-            if (ai->ai_addr != nullptr && ai->ai_addrlen <= sizeof(struct sockaddr_storage))
-            {
-                memcpy(sa, ai->ai_addr, ai->ai_addrlen);
-                family = ai->ai_family;
-            }
-            freeaddrinfo(ai);
-        }
-    }
-
-    switch (family)
-    {
-        case AF_INET: {
-            auto *sa_in = as_sockaddr_in(sa);
-            sa_in->sin_port = htons(port);
-        }
-        break;
-        case AF_INET6: {
-            auto *sa_in = as_sockaddr_in6(sa);
             sa_in->sin6_port = htons(port);
+            candidates.push_back(ss);
+            return candidates;
         }
-        break;
-        default: break;
     }
 
-    return family != AF_UNSPEC;
+    /* Host name lookup (probably DNS). The hints restrict the results to
+     * TCP-usable addresses of configured families (AI_ADDRCONFIG), instead of
+     * one duplicate entry per socket type. Every usable result is kept, in
+     * getaddrinfo's preference order: AI_ADDRCONFIG only filters families the
+     * host has *no* address in, so a family that is configured but unroutable
+     * still shows up, and the caller must be able to advance past it. */
+    struct addrinfo hints = {};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_ADDRCONFIG;
+    struct addrinfo *ai = nullptr;
+
+    if (getaddrinfo(addr.c_str(), nullptr, &hints, &ai) == 0)
+    {
+        for (const struct addrinfo *cur = ai; cur != nullptr; cur = cur->ai_next)
+        {
+            if (cur->ai_addr == nullptr || cur->ai_addrlen > sizeof(struct sockaddr_storage) ||
+                (cur->ai_family != AF_INET && cur->ai_family != AF_INET6))
+            {
+                continue;
+            }
+            struct sockaddr_storage ss = {};
+            memcpy(&ss, cur->ai_addr, cur->ai_addrlen);
+            if (ss.ss_family == AF_INET)
+            {
+                as_sockaddr_in(&ss)->sin_port = htons(port);
+            }
+            else
+            {
+                as_sockaddr_in6(&ss)->sin6_port = htons(port);
+            }
+            candidates.push_back(ss);
+        }
+        freeaddrinfo(ai);
+    }
+    return candidates;
 }
 
 /* 0-based column indices into the comma-separated SBS-1 BaseStation (port
@@ -435,29 +433,18 @@ static void log_unreachable(const std::string &addr, uint16_t port, int err)
                                                                << err << ")");
 }
 
-void dump1090::connect_to_dump1090()
+/* Try to connect to one resolved address, with the bounded non-blocking
+ * connect dance. Returns the connected fd (restored to blocking mode), or -1
+ * if this candidate is unreachable — the caller advances to the next one. */
+auto dump1090::connect_candidate(struct sockaddr_storage remote) -> int
 {
-    /* A previous receive thread may have already exited (connection dropped, fd
-     * set to -1). It is still joinable until joined, and move-assigning a new
-     * std::thread onto a joinable one calls std::terminate(). Join it first. */
-    if (this->recv_thread.joinable())
-    {
-        this->recv_thread.join();
-    }
-
-    struct sockaddr_storage remote = {};
-    if (!convert_str_to_sa(this->addr, this->port, &remote))
-    {
-        return;
-    }
-
     int new_fd = socket(remote.ss_family == AF_INET ? PF_INET : PF_INET6, SOCK_STREAM, IPPROTO_TCP);
     if (new_fd == -1)
     {
         int err = errno;
         FSS_LOG_WARN(log_component,
                      "Failed to create socket: " << std::system_category().message(err) << " (errno " << err << ")");
-        return;
+        return -1;
     }
 
     /* Set non-blocking so connect() returns immediately and we can poll() with
@@ -468,7 +455,7 @@ void dump1090::connect_to_dump1090()
         FSS_LOG_WARN(log_component,
                      "Failed to set non-blocking: " << std::system_category().message(err) << " (errno " << err << ")");
         close(new_fd);
-        return;
+        return -1;
     }
 
     socklen_t addrlen = remote.ss_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
@@ -477,7 +464,7 @@ void dump1090::connect_to_dump1090()
     {
         log_unreachable(this->addr, this->port, errno);
         close(new_fd);
-        return;
+        return -1;
     }
 
     if (rc != 0)
@@ -506,13 +493,13 @@ void dump1090::connect_to_dump1090()
             /* Timed out — treat as unreachable. */
             log_unreachable(this->addr, this->port, ETIMEDOUT);
             close(new_fd);
-            return;
+            return -1;
         }
         if (poll_rc < 0)
         {
             log_unreachable(this->addr, this->port, errno);
             close(new_fd);
-            return;
+            return -1;
         }
         /* poll() signalled writable: check whether the connect actually succeeded. */
         int so_err = 0;
@@ -521,7 +508,7 @@ void dump1090::connect_to_dump1090()
         {
             log_unreachable(this->addr, this->port, (so_err != 0) ? so_err : errno);
             close(new_fd);
-            return;
+            return -1;
         }
     }
 
@@ -533,13 +520,37 @@ void dump1090::connect_to_dump1090()
         FSS_LOG_WARN(log_component, "Failed to restore blocking mode: " << std::system_category().message(err)
                                                                         << " (errno " << err << ")");
         close(new_fd);
-        return;
+        return -1;
     }
 
-    this->fd = new_fd;
-    this->retry_delay = this->retry_delay_start;
+    return new_fd;
+}
 
-    this->recv_thread = std::thread(recv_adsb_thread, this);
+void dump1090::connect_to_dump1090()
+{
+    /* A previous receive thread may have already exited (connection dropped, fd
+     * set to -1). It is still joinable until joined, and move-assigning a new
+     * std::thread onto a joinable one calls std::terminate(). Join it first. */
+    if (this->recv_thread.joinable())
+    {
+        this->recv_thread.join();
+    }
+
+    /* Resolve fresh on every attempt and try each result in turn. Trying only
+     * the first meant a dual-stack host whose preferred family was configured
+     * but unroutable failed forever: the retry loop banged on the same dead
+     * address for the life of the process. */
+    for (const auto &remote : resolve_candidates(this->addr, this->port))
+    {
+        int new_fd = this->connect_candidate(remote);
+        if (new_fd != -1)
+        {
+            this->fd = new_fd;
+            this->retry_delay = this->retry_delay_start;
+            this->recv_thread = std::thread(recv_adsb_thread, this);
+            return;
+        }
+    }
 }
 
 void dump1090::reconnect()

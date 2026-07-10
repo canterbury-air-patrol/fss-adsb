@@ -717,52 +717,73 @@ TEST_CASE("parse_port", "[args]")
 // Address resolution (convert_str_to_sa)
 // ---------------------------------------------------------------------------
 
-TEST_CASE("convert_str_to_sa parses an IPv4 literal", "[resolver]")
+TEST_CASE("resolve_candidates parses an IPv4 literal to one candidate", "[resolver]")
 {
-    sockaddr_storage ss{};
-    REQUIRE(convert_str_to_sa("127.0.0.1", 30003, &ss));
-    REQUIRE(ss.ss_family == AF_INET);
-    auto *sin = reinterpret_cast<sockaddr_in *>(&ss);
+    auto candidates = resolve_candidates("127.0.0.1", 30003);
+    REQUIRE(candidates.size() == 1);
+    REQUIRE(candidates[0].ss_family == AF_INET);
+    auto *sin = reinterpret_cast<sockaddr_in *>(&candidates[0]);
     CHECK(ntohl(sin->sin_addr.s_addr) == INADDR_LOOPBACK);
     CHECK(ntohs(sin->sin_port) == 30003);
 }
 
-TEST_CASE("convert_str_to_sa parses an IPv6 literal", "[resolver]")
+TEST_CASE("resolve_candidates parses an IPv6 literal to one candidate", "[resolver]")
 {
-    sockaddr_storage ss{};
-    REQUIRE(convert_str_to_sa("::1", 30003, &ss));
-    REQUIRE(ss.ss_family == AF_INET6);
-    auto *sin6 = reinterpret_cast<sockaddr_in6 *>(&ss);
+    auto candidates = resolve_candidates("::1", 30003);
+    REQUIRE(candidates.size() == 1);
+    REQUIRE(candidates[0].ss_family == AF_INET6);
+    auto *sin6 = reinterpret_cast<sockaddr_in6 *>(&candidates[0]);
     CHECK(memcmp(&sin6->sin6_addr, &in6addr_loopback, sizeof(in6addr_loopback)) == 0);
     CHECK(ntohs(sin6->sin6_port) == 30003);
 }
 
-TEST_CASE("convert_str_to_sa resolves a hostname", "[resolver]")
+TEST_CASE("resolve_candidates resolves a hostname with the port set on every result", "[resolver]")
 {
-    sockaddr_storage ss{};
-    REQUIRE(convert_str_to_sa("localhost", 30003, &ss));
-    // Either family may win depending on the host's configuration; the port
-    // must be set on whichever sockaddr came back.
-    if (ss.ss_family == AF_INET)
+    auto candidates = resolve_candidates("localhost", 30003);
+    // How many results (and which families) depends on the host's
+    // configuration, but every one must be a loopback address carrying the
+    // port.
+    REQUIRE(!candidates.empty());
+    for (auto &candidate : candidates)
     {
-        auto *sin = reinterpret_cast<sockaddr_in *>(&ss);
-        CHECK(ntohl(sin->sin_addr.s_addr) == INADDR_LOOPBACK);
-        CHECK(ntohs(sin->sin_port) == 30003);
-    }
-    else
-    {
-        REQUIRE(ss.ss_family == AF_INET6);
-        auto *sin6 = reinterpret_cast<sockaddr_in6 *>(&ss);
-        CHECK(memcmp(&sin6->sin6_addr, &in6addr_loopback, sizeof(in6addr_loopback)) == 0);
-        CHECK(ntohs(sin6->sin6_port) == 30003);
+        if (candidate.ss_family == AF_INET)
+        {
+            auto *sin = reinterpret_cast<sockaddr_in *>(&candidate);
+            CHECK(ntohl(sin->sin_addr.s_addr) == INADDR_LOOPBACK);
+            CHECK(ntohs(sin->sin_port) == 30003);
+        }
+        else
+        {
+            REQUIRE(candidate.ss_family == AF_INET6);
+            auto *sin6 = reinterpret_cast<sockaddr_in6 *>(&candidate);
+            CHECK(memcmp(&sin6->sin6_addr, &in6addr_loopback, sizeof(in6addr_loopback)) == 0);
+            CHECK(ntohs(sin6->sin6_port) == 30003);
+        }
     }
 }
 
-TEST_CASE("convert_str_to_sa rejects an unresolvable name", "[resolver]")
+TEST_CASE("resolve_candidates returns nothing for an unresolvable name", "[resolver]")
 {
     // .invalid is reserved (RFC 6761): resolvers must return NXDOMAIN.
-    sockaddr_storage ss{};
-    CHECK_FALSE(convert_str_to_sa("dump1090.invalid", 30003, &ss));
+    CHECK(resolve_candidates("dump1090.invalid", 30003).empty());
+}
+
+TEST_CASE("connect falls back past a candidate that refuses", "[resolver]")
+{
+    // The listener is IPv4-only, so when localhost resolves to ::1 first (the
+    // common dual-stack ordering) that candidate is refused and the connect
+    // must advance to 127.0.0.1 rather than give up. On hosts where localhost
+    // is IPv4-only this degrades to a plain connect test.
+    auto [listen_fd, port] = open_loopback_listener();
+
+    dump1090 dut{"localhost", port, capture_cb};
+    REQUIRE(dut.test_isConnected());
+    int conn = accept(listen_fd, nullptr, nullptr);
+    REQUIRE(conn >= 0);
+
+    dut.disconnect();
+    close(conn);
+    close(listen_fd);
 }
 
 // ---------------------------------------------------------------------------

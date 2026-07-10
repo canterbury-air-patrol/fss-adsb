@@ -3,16 +3,18 @@
 #include <atomic>
 #include <string>
 #include <thread>
+#include <vector>
 #include <cstdint>
 
 #include <sys/socket.h>
 
 #include "point.hpp"
 
-/* Resolve an IPv4 literal, IPv6 literal or hostname (plus port) into *sa.
- * Returns false when the address is unusable. Defined in dump1090.cpp;
- * declared here so the tests can exercise it directly. */
-auto convert_str_to_sa(const std::string &addr, uint16_t port, struct sockaddr_storage *sa) -> bool;
+/* Resolve an IPv4 literal, IPv6 literal or hostname (plus port) into the
+ * connectable candidate addresses, in resolver preference order. Literals
+ * yield exactly one candidate; an unusable name yields none. Defined in
+ * dump1090.cpp; declared here so the tests can exercise it directly. */
+auto resolve_candidates(const std::string &addr, uint16_t port) -> std::vector<sockaddr_storage>;
 
 class ADSBData {
 private:
@@ -103,6 +105,7 @@ private:
     void processMessage(const std::string &msg, uint64_t received);
     notify_dump1090_adsb_data_cb adsb_cb{nullptr};
     void connect_to_dump1090();
+    auto connect_candidate(struct sockaddr_storage remote) -> int;
     static constexpr uint64_t retry_delay_start = 1000;
     static constexpr uint64_t retry_delay_cap = 30000;
     static constexpr int connect_timeout_ms = 5000;
