@@ -205,35 +205,91 @@ static auto sbs1_to_double(const std::string &s, double min, double max) -> std:
     return v;
 }
 
-/* Parse a signed altitude string and clamp to [0, UINT32_MAX].
- * Negative values (e.g. "-100" for Schiphol at -13 ft MSL) become 0 rather
- * than wrapping to a huge uint32 via strtoul. Parsed as long long because on
- * 32-bit targets (armhf) UINT32_MAX does not fit in a long: the old
+/* strtoll/strtol/strtoul (the previous implementation of the three parsers
+ * below) accept a numeric prefix and return 0 when no conversion at all is
+ * possible, so garbage like "garbage" or "1200x" silently became a
+ * plausible-looking value instead of being rejected. from_chars gives a
+ * strict, full-field parse (as sbs1_to_address/sbs1_to_double already use),
+ * but it leaves its output unmodified when the number is syntactically valid
+ * and merely too big for the intermediate type (std::errc::result_out_of_range);
+ * this reads the sign back off the string in that case to still clamp in the
+ * right direction, since the wire's legitimate out-of-range values (see each
+ * function) must keep clamping rather than being rejected alongside garbage. */
+static auto looks_negative(const std::string &s) -> bool
+{
+    return !s.empty() && s.front() == '-';
+}
+
+/* Parse a signed altitude string, rejecting anything that is not a clean
+ * (optionally negative) integer -- an empty field, "garbage", or trailing
+ * junk like "1200x" all return nullopt rather than a "valid" 0. A
+ * syntactically valid value outside [0, UINT32_MAX] is still clamped, not
+ * rejected: negative altitudes (e.g. "-100" for Schiphol at -13 ft MSL) are
+ * real dump1090 output and become 0. Parsed as long long because on 32-bit
+ * targets (armhf) UINT32_MAX does not fit in a long: the old
  * static_cast<long>(UINT32_MAX) clamp bound was -1, so every altitude
  * "clamped" to -1 and wrapped to 0xFFFFFFFF. */
-static auto sbs1_to_altitude(const std::string &s) -> uint32_t
+static auto sbs1_to_altitude(const std::string &s) -> std::optional<uint32_t>
 {
-    long long v = std::strtoll(s.c_str(), nullptr, 10);
+    long long v = 0;
+    const char *end = s.c_str() + s.size();
+    auto [ptr, ec] = std::from_chars(s.c_str(), end, v);
+    if (ptr != end || (ec != std::errc{} && ec != std::errc::result_out_of_range))
+    {
+        return std::nullopt;
+    }
+    if (ec == std::errc::result_out_of_range)
+    {
+        v = looks_negative(s) ? std::numeric_limits<long long>::min() : std::numeric_limits<long long>::max();
+    }
     long long clamped = std::max(v, 0LL);
     return static_cast<uint32_t>(
         std::min(clamped, static_cast<long long>(UINT32_MAX))); // NOLINT(cppcoreguidelines-narrowing-conversions)
 }
 
-/* Parse a vertical-rate string and clamp to [INT16_MIN, INT16_MAX].
- * Out-of-range garbage like "70000" must not silently wrap via a cast. */
-static auto sbs1_to_vertrate(const std::string &s) -> int16_t
+/* Parse a vertical-rate string, rejecting malformed input the same way as
+ * sbs1_to_altitude above. A syntactically valid value outside
+ * [INT16_MIN, INT16_MAX] -- out-of-range garbage like "70000" -- is still
+ * clamped rather than rejected, matching the field's existing behaviour;
+ * only unparseable text is now turned away. */
+static auto sbs1_to_vertrate(const std::string &s) -> std::optional<int16_t>
 {
-    long v = std::strtol(s.c_str(), nullptr, 10);
+    long v = 0;
+    const char *end = s.c_str() + s.size();
+    auto [ptr, ec] = std::from_chars(s.c_str(), end, v);
+    if (ptr != end || (ec != std::errc{} && ec != std::errc::result_out_of_range))
+    {
+        return std::nullopt;
+    }
+    if (ec == std::errc::result_out_of_range)
+    {
+        v = looks_negative(s) ? std::numeric_limits<long>::min() : std::numeric_limits<long>::max();
+    }
     return static_cast<int16_t>(
         std::clamp(v, static_cast<long>(INT16_MIN),
                    static_cast<long>(INT16_MAX))); // NOLINT(cppcoreguidelines-narrowing-conversions)
 }
 
-/* Parse an unsigned 16-bit field (heading, squawk) and clamp to [0, UINT16_MAX].
- * Values > 65535 must not silently wrap via implicit uint16_t truncation. */
-static auto sbs1_to_u16(const std::string &s) -> uint16_t
+/* Parse an unsigned 16-bit field (squawk), rejecting malformed input, and
+ * clamp a syntactically valid value above UINT16_MAX (values must not
+ * silently wrap via implicit uint16_t truncation). Parsing into an unsigned
+ * intermediate type means from_chars itself rejects a leading '-' as
+ * malformed, unlike strtoul, which would wrap a negative string into a huge
+ * unsigned value that then clamped down to a plausible-looking UINT16_MAX --
+ * a negative squawk is invalid input, not a giant unsigned one. */
+static auto sbs1_to_u16(const std::string &s) -> std::optional<uint16_t>
 {
-    unsigned long v = std::strtoul(s.c_str(), nullptr, 10);
+    unsigned long v = 0;
+    const char *end = s.c_str() + s.size();
+    auto [ptr, ec] = std::from_chars(s.c_str(), end, v);
+    if (ptr != end || (ec != std::errc{} && ec != std::errc::result_out_of_range))
+    {
+        return std::nullopt;
+    }
+    if (ec == std::errc::result_out_of_range)
+    {
+        v = std::numeric_limits<unsigned long>::max();
+    }
     return static_cast<uint16_t>(
         std::min(v, static_cast<unsigned long>(UINT16_MAX))); // NOLINT(cppcoreguidelines-narrowing-conversions)
 }
@@ -278,12 +334,14 @@ void dump1090::processMessage(const std::string &t_msg, uint64_t t_received)
                 {
                     adsb.setPosition(Point(*lat, *lng));
                 }
-                /* An empty altitude field parses to 0, and setting it would
-                 * mark altitude valid, reporting an aircraft at 0 ft when its
-                 * real altitude is simply absent from this MSG. */
-                if (!data[sbs1_field_altitude].empty())
+                /* An empty (or otherwise malformed) altitude field parses to
+                 * nullopt, and setting it would mark altitude valid, reporting
+                 * an aircraft at 0 ft when its real altitude is simply absent
+                 * from this MSG. */
+                auto altitude = sbs1_to_altitude(data[sbs1_field_altitude]);
+                if (altitude.has_value())
                 {
-                    adsb.setAltitude(sbs1_to_altitude(data[sbs1_field_altitude]), t_received);
+                    adsb.setAltitude(*altitude, t_received);
                 }
                 break;
             }
@@ -305,36 +363,42 @@ void dump1090::processMessage(const std::string &t_msg, uint64_t t_received)
                 {
                     adsb.setHeading(*track, t_received);
                 }
-                if (!data[sbs1_field_vertrate].empty())
+                auto vertrate = sbs1_to_vertrate(data[sbs1_field_vertrate]);
+                if (vertrate.has_value())
                 {
-                    adsb.setVertVel(sbs1_to_vertrate(data[sbs1_field_vertrate]), t_received);
+                    adsb.setVertVel(*vertrate, t_received);
                 }
                 break;
             }
-            case sbs1_id_surveillance_id:
-                if (!data[sbs1_field_squawk].empty())
+            case sbs1_id_surveillance_id: {
+                auto squawk = sbs1_to_u16(data[sbs1_field_squawk]);
+                if (squawk.has_value())
                 {
-                    adsb.setSquawk(sbs1_to_u16(data[sbs1_field_squawk]), t_received);
+                    adsb.setSquawk(*squawk, t_received);
                 }
                 /* MSG,6 carries altitude alongside the squawk; consume it like
                  * MSG,5/MSG,7 below. */
-                if (!data[sbs1_field_altitude].empty())
+                auto altitude = sbs1_to_altitude(data[sbs1_field_altitude]);
+                if (altitude.has_value())
                 {
-                    adsb.setAltitude(sbs1_to_altitude(data[sbs1_field_altitude]), t_received);
+                    adsb.setAltitude(*altitude, t_received);
                 }
                 break;
+            }
             case sbs1_id_surveillance_alt:
-            case sbs1_id_air_to_air:
+            case sbs1_id_air_to_air: {
                 /* MSG,5 (surveillance alt) and MSG,7 (air-to-air) carry an
                  * altitude but no position. Aircraft with Mode S but no ADS-B
                  * Out emit only these, so without this their record never
                  * gains an altitude; for ADS-B targets it keeps the last-known
                  * altitude fresh between MSG,3s. */
-                if (!data[sbs1_field_altitude].empty())
+                auto altitude = sbs1_to_altitude(data[sbs1_field_altitude]);
+                if (altitude.has_value())
                 {
-                    adsb.setAltitude(sbs1_to_altitude(data[sbs1_field_altitude]), t_received);
+                    adsb.setAltitude(*altitude, t_received);
                 }
                 break;
+            }
             case sbs1_id_surface_pos:
                 /* Surface position: aircraft on the ground are deliberately not
                  * reported (no airborne conflict, and its altitude is just the
