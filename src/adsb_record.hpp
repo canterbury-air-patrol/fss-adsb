@@ -30,45 +30,94 @@ constexpr uint16_t valid_vertvel = 128;
 /* Fold a freshly-parsed message into the accumulated record. Each field is
  * copied only when the message actually carries it, so a position-only message
  * leaves the previously-seen altitude/heading/etc. (and their valid bits)
- * intact. last_seen is deliberately not touched here: it needs the current
+ * intact. Each field's observation time travels with it (the message's
+ * receive-time stamp), so report_flags can later tell a fresh value from a
+ * stale one. last_seen is deliberately not touched here: it needs the current
  * clock and stays with the caller. */
 inline void update_record(ADSBData &record, const ADSBData &msg)
 {
     if (msg.validCallsign() && msg.getCallsign() != "")
     {
-        record.setCallsign(msg.getCallsign());
+        record.setCallsign(msg.getCallsign(), msg.getCallsignTime());
     }
     if (msg.validAltitude())
     {
-        record.setAltitude(msg.getAltitude());
+        record.setAltitude(msg.getAltitude(), msg.getAltitudeTime());
     }
     if (msg.validHeading())
     {
-        record.setHeading(msg.getHeading());
+        record.setHeading(msg.getHeading(), msg.getHeadingTime());
     }
     if (msg.validSpeed())
     {
-        record.setSpeed(msg.getSpeed());
+        record.setSpeed(msg.getSpeed(), msg.getSpeedTime());
     }
     if (msg.validVertVel())
     {
-        record.setVertVel(msg.getVertVel());
+        record.setVertVel(msg.getVertVel(), msg.getVertVelTime());
     }
     if (msg.validSquawk())
     {
-        record.setSquawk(msg.getSquawk());
+        record.setSquawk(msg.getSquawk(), msg.getSquawkTime());
     }
 }
 
-/* Flags word for a position report built from the record. coords is always
- * valid here: this is only called once the message carried a position. Every
- * other bit follows what the accumulated record knows, not the triggering
- * message, so the report carries last-known altitude/heading/etc. */
-inline auto report_flags(const ADSBData &record) -> uint16_t
+/* Freshness windows for accumulated fields, in milliseconds. A record's
+ * last_seen (and the 10-minute stale_window_ms in main.cpp's
+ * evict_stale_aircraft) only tracks whether the aircraft is still being heard
+ * from at all; it says nothing about whether any one field's last-known value
+ * is still representative. Without this, a heading or speed observed many
+ * minutes ago rides along on every later position report -- indistinguishable
+ * from a value seen just now -- which is misleading for conflict detection.
+ *
+ * Motion fields (altitude, heading, speed, vertical rate) are carried on
+ * MSG,3/4/5/6/7, which an actively-tracked aircraft with reasonable signal
+ * repeats at most a few seconds apart; a minute of silence on one of them
+ * means the last value is no longer a safe stand-in for "current". Identity
+ * fields (callsign, squawk) change far less often and are legitimately quiet
+ * for longer between updates, so they get a longer window -- still well under
+ * the 10-minute full-aircraft eviction, so an aircraft never carries an
+ * identity older than the record itself. Both are conservative engineering
+ * defaults, not values taken from a spec; tune here if operational experience
+ * says otherwise. */
+constexpr uint64_t motion_freshness_ms = UINT64_C(60) * 1000;
+constexpr uint64_t identity_freshness_ms = UINT64_C(5) * 60 * 1000;
+
+/* True if a field last observed at t_observed is no longer fresh as of
+ * t_as_of, given a freshness window. Mirrors ADSBData::isStale's guard: a
+ * backwards clock step (t_as_of < t_observed) must not underflow the
+ * subtraction and expire every field. */
+inline auto field_expired(uint64_t t_as_of, uint64_t t_observed, uint64_t t_window) -> bool
 {
-    return valid_coords | (record.validAltitude() ? valid_altitude : 0) | (record.validHeading() ? valid_heading : 0) |
-           (record.validSpeed() ? valid_speed : 0) | (record.validCallsign() ? valid_callsign : 0) |
-           (record.validSquawk() ? valid_squawk : 0) | (record.validVertVel() ? valid_vertvel : 0);
+    return t_as_of >= t_observed && (t_as_of - t_observed) >= t_window;
+}
+
+/* Flags word for a position report built from the record, as of t_as_of
+ * (the triggering message's receive-time stamp -- see build_report). coords is
+ * always valid here: this is only called once the message carried a position.
+ * Every other bit follows what the accumulated record knows and how recently
+ * it was observed, not the triggering message, so the report carries
+ * last-known altitude/heading/etc. but only while that value is still fresh. */
+inline auto report_flags(const ADSBData &record, uint64_t t_as_of = 0) -> uint16_t
+{
+    return valid_coords |
+           (record.validAltitude() && !field_expired(t_as_of, record.getAltitudeTime(), motion_freshness_ms)
+                ? valid_altitude
+                : 0) |
+           (record.validHeading() && !field_expired(t_as_of, record.getHeadingTime(), motion_freshness_ms)
+                ? valid_heading
+                : 0) |
+           (record.validSpeed() && !field_expired(t_as_of, record.getSpeedTime(), motion_freshness_ms) ? valid_speed
+                                                                                                       : 0) |
+           (record.validCallsign() && !field_expired(t_as_of, record.getCallsignTime(), identity_freshness_ms)
+                ? valid_callsign
+                : 0) |
+           (record.validSquawk() && !field_expired(t_as_of, record.getSquawkTime(), identity_freshness_ms)
+                ? valid_squawk
+                : 0) |
+           (record.validVertVel() && !field_expired(t_as_of, record.getVertVelTime(), motion_freshness_ms)
+                ? valid_vertvel
+                : 0);
 }
 
 /* The position report's data-derived fields, in the units the FSS message
@@ -120,7 +169,7 @@ inline auto build_report(const ADSBData &record, const ADSBData &msg) -> std::op
     report.icao_address = record.getICAOAddress();
     report.callsign = record.getCallsign();
     report.squawk = record.getSquawk();
-    report.flags = report_flags(record);
+    report.flags = report_flags(record, msg.getLastSeen());
     return report;
 }
 
