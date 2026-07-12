@@ -242,9 +242,8 @@ static auto sbs1_to_altitude(const std::string &s) -> std::optional<uint32_t>
     {
         v = looks_negative(s) ? std::numeric_limits<long long>::min() : std::numeric_limits<long long>::max();
     }
-    long long clamped = std::max(v, 0LL);
     return static_cast<uint32_t>(
-        std::min(clamped, static_cast<long long>(UINT32_MAX))); // NOLINT(cppcoreguidelines-narrowing-conversions)
+        std::clamp(v, 0LL, static_cast<long long>(UINT32_MAX))); // NOLINT(cppcoreguidelines-narrowing-conversions)
 }
 
 /* Parse a vertical-rate string, rejecting malformed input the same way as
@@ -338,8 +337,7 @@ void dump1090::processMessage(const std::string &t_msg, uint64_t t_received)
                  * nullopt, and setting it would mark altitude valid, reporting
                  * an aircraft at 0 ft when its real altitude is simply absent
                  * from this MSG. */
-                auto altitude = sbs1_to_altitude(data[sbs1_field_altitude]);
-                if (altitude.has_value())
+                if (auto altitude = sbs1_to_altitude(data[sbs1_field_altitude]))
                 {
                     adsb.setAltitude(*altitude, t_received);
                 }
@@ -363,23 +361,20 @@ void dump1090::processMessage(const std::string &t_msg, uint64_t t_received)
                 {
                     adsb.setHeading(*track, t_received);
                 }
-                auto vertrate = sbs1_to_vertrate(data[sbs1_field_vertrate]);
-                if (vertrate.has_value())
+                if (auto vertrate = sbs1_to_vertrate(data[sbs1_field_vertrate]))
                 {
                     adsb.setVertVel(*vertrate, t_received);
                 }
                 break;
             }
             case sbs1_id_surveillance_id: {
-                auto squawk = sbs1_to_u16(data[sbs1_field_squawk]);
-                if (squawk.has_value())
+                if (auto squawk = sbs1_to_u16(data[sbs1_field_squawk]))
                 {
                     adsb.setSquawk(*squawk, t_received);
                 }
                 /* MSG,6 carries altitude alongside the squawk; consume it like
                  * MSG,5/MSG,7 below. */
-                auto altitude = sbs1_to_altitude(data[sbs1_field_altitude]);
-                if (altitude.has_value())
+                if (auto altitude = sbs1_to_altitude(data[sbs1_field_altitude]))
                 {
                     adsb.setAltitude(*altitude, t_received);
                 }
@@ -392,8 +387,7 @@ void dump1090::processMessage(const std::string &t_msg, uint64_t t_received)
                  * Out emit only these, so without this their record never
                  * gains an altitude; for ADS-B targets it keeps the last-known
                  * altitude fresh between MSG,3s. */
-                auto altitude = sbs1_to_altitude(data[sbs1_field_altitude]);
-                if (altitude.has_value())
+                if (auto altitude = sbs1_to_altitude(data[sbs1_field_altitude]))
                 {
                     adsb.setAltitude(*altitude, t_received);
                 }
