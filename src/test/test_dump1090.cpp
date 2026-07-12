@@ -300,6 +300,92 @@ TEST_CASE_METHOD(ParserFixture, "MSG types 2/5/7/8 with empty fields set no data
 }
 
 // ---------------------------------------------------------------------------
+// Strict integer parsing (altitude, vertical rate, squawk)
+// ---------------------------------------------------------------------------
+
+TEST_CASE_METHOD(ParserFixture, "MSG type 3 garbage or trailing-junk altitude leaves altitude unset",
+                 "[parser][malformed]")
+{
+    // strtoll parsed a numeric prefix and returned 0 for anything else, so
+    // "garbage" and "1200x" both became a "valid" 0 ft. A leading '+' is also
+    // rejected here: unlike strtoll, from_chars does not accept one.
+    for (const char *altitude : {"garbage", "1200x", "12.5", "+100"})
+    {
+        g_captured.reset();
+        g_call_count = 0;
+        feed(makeMsg("3", "A12345", "", altitude));
+        INFO("altitude '" << altitude << "'");
+        REQUIRE(g_call_count == 1);
+        CHECK_FALSE(g_captured->validAltitude());
+    }
+}
+
+TEST_CASE_METHOD(ParserFixture, "MSG type 3 altitude too large even for long long still clamps to UINT32_MAX",
+                 "[parser][clamp]")
+{
+    feed(makeMsg("3", "A12345", "", "999999999999999999999999999999"));
+    REQUIRE(g_call_count == 1);
+    CHECK(g_captured->validAltitude());
+    CHECK(g_captured->getAltitude() == UINT32_MAX);
+}
+
+TEST_CASE_METHOD(ParserFixture, "MSG type 3 altitude too negative even for long long still clamps to 0",
+                 "[parser][clamp]")
+{
+    feed(makeMsg("3", "A12345", "", "-999999999999999999999999999999"));
+    REQUIRE(g_call_count == 1);
+    CHECK(g_captured->validAltitude());
+    CHECK(g_captured->getAltitude() == 0);
+}
+
+TEST_CASE_METHOD(ParserFixture, "MSG type 4 garbage or trailing-junk vert rate leaves vert rate unset",
+                 "[parser][malformed]")
+{
+    for (const char *vertrate : {"garbage", "1024x", "12.5"})
+    {
+        g_captured.reset();
+        g_call_count = 0;
+        feed(makeMsg("4", "A12345", "", "", "0", "0", "", "", vertrate));
+        INFO("vert rate '" << vertrate << "'");
+        REQUIRE(g_call_count == 1);
+        CHECK_FALSE(g_captured->validVertVel());
+    }
+}
+
+TEST_CASE_METHOD(ParserFixture, "MSG type 4 vert rate too extreme even for long still clamps", "[parser][clamp]")
+{
+    feed(makeMsg("4", "A12345", "", "", "0", "0", "", "", "999999999999999999999999999999"));
+    REQUIRE(g_call_count == 1);
+    CHECK(g_captured->validVertVel());
+    CHECK(g_captured->getVertVel() == INT16_MAX);
+}
+
+TEST_CASE_METHOD(ParserFixture, "MSG type 6 garbage or negative squawk leaves squawk unset", "[parser][malformed]")
+{
+    // strtoul wrapped a negative string into a huge unsigned value that then
+    // clamped down to a plausible-looking UINT16_MAX; from_chars into an
+    // unsigned type rejects the leading '-' outright instead.
+    for (const char *squawk : {"garbage", "7700x", "-5"})
+    {
+        g_captured.reset();
+        g_call_count = 0;
+        feed(makeMsg("6", "A12345", "", "", "", "", "", "", "", squawk));
+        INFO("squawk '" << squawk << "'");
+        REQUIRE(g_call_count == 1);
+        CHECK_FALSE(g_captured->validSquawk());
+    }
+}
+
+TEST_CASE_METHOD(ParserFixture, "MSG type 6 squawk too large even for unsigned long still clamps to UINT16_MAX",
+                 "[parser][clamp]")
+{
+    feed(makeMsg("6", "A12345", "", "", "", "", "", "", "", "999999999999999999999999999999"));
+    REQUIRE(g_call_count == 1);
+    CHECK(g_captured->validSquawk());
+    CHECK(g_captured->getSquawk() == UINT16_MAX);
+}
+
+// ---------------------------------------------------------------------------
 // Empty optional fields
 // ---------------------------------------------------------------------------
 
