@@ -21,7 +21,7 @@ runs:
         sudo apt-get update -qq
         sudo apt-get install -y \
           autotools-dev pkg-config \
-          libjsoncpp-dev libgnutls28-dev libecpg-dev \
+          libjsoncpp-dev libgnutls28-dev libecpg-dev catch2 \
           ${{ inputs.extra-packages }}
 
     - name: Resolve flight-safety-system revision

@@ -1,4 +1,14 @@
+/* FSS_ADSB_CATCH2_V3 (set by src/Makefile.am) selects the system Catch2 v3
+ * headers where configure found catch2-with-main; otherwise this falls back
+ * to the vendored Catch2 v2 single header. v3 does not re-export Approx at
+ * global scope the way v2's catch.hpp does, so pull it in explicitly to keep
+ * the unqualified Approx(...) calls below working unchanged. */
+#ifdef FSS_ADSB_CATCH2_V3
+#include <catch2/catch_all.hpp>
+using Catch::Approx;
+#else
 #include "catch.hpp"
+#endif
 
 #include <atomic>
 #include <chrono>

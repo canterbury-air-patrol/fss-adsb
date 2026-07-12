@@ -20,6 +20,17 @@ PKG_PROG_PKG_CONFIG
 PKG_CHECK_MODULES([FSS_CLIENT_SSL], [fss-client-ssl])
 PKG_CHECK_MODULES([FSS_TRANSPORT], [fss-transport])
 
+# Catch2 v3 (system package, linked via pkg-config) is preferred for the test
+# suite, but it is not available everywhere this is packaged: Debian bookworm
+# ships only Catch2 v2 (no catch2-with-main.pc), while trixie and current
+# Ubuntu ship v3. Detection is optional (the third/fourth PKG_CHECK_MODULES
+# arguments suppress the usual configure failure) so a v2-only host still
+# configures successfully, falling back to the vendored src/test/catch.hpp +
+# test_main.cpp (unconditionally kept in the tree for exactly this case) via
+# the HAVE_CATCH2_V3 Automake conditional in src/Makefile.am.
+PKG_CHECK_MODULES([CATCH2], [catch2-with-main], [have_catch2_v3=yes], [have_catch2_v3=no])
+AM_CONDITIONAL([HAVE_CATCH2_V3], [test "x$have_catch2_v3" = xyes])
+
 # When the FSS libraries live in a non-standard prefix (a local development
 # install), hardcode an rpath to them like libtool used to, so the built
 # binaries run without LD_LIBRARY_PATH. System library dirs get no rpath,

@@ -20,10 +20,21 @@ fss_adsb_LDADD = $(FSS_CLIENT_SSL_LIBS) $(FSS_TRANSPORT_LIBS)
 check_PROGRAMS = test_dump1090
 TESTS = test_dump1090
 
+# HAVE_CATCH2_V3 (set in configure.ac) picks system Catch2 v3 via pkg-config
+# where available (it provides its own main, so test_main.cpp is dropped) and
+# falls back to the vendored Catch2 v2 header + test_main.cpp otherwise -- see
+# the configure.ac comment for why both paths still exist.
+if HAVE_CATCH2_V3
+test_dump1090_SOURCES = test/test_dump1090.cpp dump1090.cpp
+test_dump1090_CPPFLAGS = -DFSS_ADSB_TESTING -DFSS_ADSB_CATCH2_V3 -I$(srcdir)/test
+test_dump1090_CXXFLAGS = $(AM_CXXFLAGS) -Wno-effc++ -Wno-shadow $(CATCH2_CFLAGS) $(FSS_CLIENT_SSL_CFLAGS) $(FSS_TRANSPORT_CFLAGS)
+test_dump1090_LDADD = $(CATCH2_LIBS) $(FSS_CLIENT_SSL_LIBS) $(FSS_TRANSPORT_LIBS)
+else
 test_dump1090_SOURCES = test/test_main.cpp test/test_dump1090.cpp dump1090.cpp
 test_dump1090_CPPFLAGS = -DFSS_ADSB_TESTING -I$(srcdir)/test
 test_dump1090_CXXFLAGS = $(AM_CXXFLAGS) -Wno-effc++ -Wno-shadow $(FSS_CLIENT_SSL_CFLAGS) $(FSS_TRANSPORT_CFLAGS)
-test_dump1090_LDFLAGS = $(FSS_RPATH)
 test_dump1090_LDADD = $(FSS_CLIENT_SSL_LIBS) $(FSS_TRANSPORT_LIBS)
+endif
+test_dump1090_LDFLAGS = $(FSS_RPATH)
 
 EXTRA_DIST = test/catch.hpp
