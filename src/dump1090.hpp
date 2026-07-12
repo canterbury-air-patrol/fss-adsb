@@ -21,68 +21,96 @@ private:
     uint32_t ICAOAddress;
     std::string callsign{};
     bool callsign_set{false};
+    uint64_t callsign_time{0};
     uint32_t altitude{0};
     bool altitude_set{false};
+    uint64_t altitude_time{0};
     /* Speed (knots) and heading (degrees) are stored as the wire carries
      * them — with a decimal fraction — so the report-time conversion to cm/s
      * and centidegrees keeps the resolution those units pay for. */
     double speed{0.0};
     bool speed_set{false};
+    uint64_t speed_time{0};
     double heading{0.0};
     bool heading_set{false};
+    uint64_t heading_time{0};
     Point pos{};
     int16_t vert_vel{0};
     bool vert_vel_set{false};
+    uint64_t vert_vel_time{0};
     uint16_t squawk{0};
     bool squawk_set{false};
+    uint64_t squawk_time{0};
     uint64_t last_seen{0};
 public:
     explicit ADSBData(uint32_t t_ICAOAddress) : ICAOAddress(t_ICAOAddress) {};
     [[nodiscard]] auto getICAOAddress() const -> uint32_t { return this->ICAOAddress; };
-    void setCallsign(std::string t_callsign)
+    /* t_time is the field's observation timestamp (the recv() stamp of the
+     * message that carried it), used to expire stale accumulated fields --
+     * see adsb_report::report_flags. It defaults to 0 so call sites that
+     * don't care about freshness (most existing tests) don't need to pass
+     * one, matching the ADSBData::test_processMessage precedent. */
+    void setCallsign(std::string t_callsign, uint64_t t_time = 0)
     {
         this->callsign = std::move(t_callsign);
         this->callsign_set = true;
+        this->callsign_time = t_time;
     };
     [[nodiscard]] auto getCallsign() const -> std::string { return this->callsign; };
     [[nodiscard]] auto validCallsign() const -> bool { return this->callsign_set; };
+    [[nodiscard]] auto getCallsignTime() const -> uint64_t { return this->callsign_time; };
     void setPosition(const Point &t_pos) { this->pos = t_pos; };
     [[nodiscard]] auto getPosition() const -> Point { return this->pos; };
-    void setAltitude(uint32_t t_alt)
+    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+    void setAltitude(uint32_t t_alt, uint64_t t_time = 0)
     {
         this->altitude = t_alt;
         this->altitude_set = true;
+        this->altitude_time = t_time;
     };
     [[nodiscard]] auto getAltitude() const -> uint32_t { return this->altitude; };
     [[nodiscard]] auto validAltitude() const -> bool { return this->altitude_set; };
-    void setSpeed(double t_speed)
+    [[nodiscard]] auto getAltitudeTime() const -> uint64_t { return this->altitude_time; };
+    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+    void setSpeed(double t_speed, uint64_t t_time = 0)
     {
         this->speed = t_speed;
         this->speed_set = true;
+        this->speed_time = t_time;
     };
     [[nodiscard]] auto getSpeed() const -> double { return this->speed; };
     [[nodiscard]] auto validSpeed() const -> bool { return this->speed_set; };
-    void setHeading(double t_heading)
+    [[nodiscard]] auto getSpeedTime() const -> uint64_t { return this->speed_time; };
+    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+    void setHeading(double t_heading, uint64_t t_time = 0)
     {
         this->heading = t_heading;
         this->heading_set = true;
+        this->heading_time = t_time;
     };
     [[nodiscard]] auto getHeading() const -> double { return this->heading; };
     [[nodiscard]] auto validHeading() const -> bool { return this->heading_set; };
-    void setVertVel(int16_t t_vert_vel)
+    [[nodiscard]] auto getHeadingTime() const -> uint64_t { return this->heading_time; };
+    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+    void setVertVel(int16_t t_vert_vel, uint64_t t_time = 0)
     {
         this->vert_vel = t_vert_vel;
         this->vert_vel_set = true;
+        this->vert_vel_time = t_time;
     };
     [[nodiscard]] auto getVertVel() const -> int16_t { return this->vert_vel; };
     [[nodiscard]] auto validVertVel() const -> bool { return this->vert_vel_set; };
-    void setSquawk(uint16_t t_sqawk)
+    [[nodiscard]] auto getVertVelTime() const -> uint64_t { return this->vert_vel_time; };
+    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+    void setSquawk(uint16_t t_sqawk, uint64_t t_time = 0)
     {
         this->squawk = t_sqawk;
         this->squawk_set = true;
+        this->squawk_time = t_time;
     };
     [[nodiscard]] auto getSquawk() const -> uint16_t { return this->squawk; };
     [[nodiscard]] auto validSquawk() const -> bool { return this->squawk_set; };
+    [[nodiscard]] auto getSquawkTime() const -> uint64_t { return this->squawk_time; };
     void setLastSeen(uint64_t t_last_seen) { this->last_seen = t_last_seen; };
     [[nodiscard]] auto getLastSeen() const -> uint64_t { return this->last_seen; };
     /* Stale if last seen at least window ms ago. The now >= last_seen guard

@@ -266,7 +266,7 @@ void dump1090::processMessage(const std::string &t_msg, uint64_t t_received)
         adsb.setLastSeen(t_received);
         switch (strtol(data[sbs1_field_id].c_str(), nullptr, sbs1_id_base))
         {
-            case sbs1_id_ident: adsb.setCallsign(data[sbs1_field_callsign]); break;
+            case sbs1_id_ident: adsb.setCallsign(data[sbs1_field_callsign], t_received); break;
             case sbs1_id_airborne_pos: {
                 /* Both coordinates must parse cleanly and be in range; on any
                  * failure the position stays unset rather than becoming a
@@ -283,7 +283,7 @@ void dump1090::processMessage(const std::string &t_msg, uint64_t t_received)
                  * real altitude is simply absent from this MSG. */
                 if (!data[sbs1_field_altitude].empty())
                 {
-                    adsb.setAltitude(sbs1_to_altitude(data[sbs1_field_altitude]));
+                    adsb.setAltitude(sbs1_to_altitude(data[sbs1_field_altitude]), t_received);
                 }
                 break;
             }
@@ -298,29 +298,29 @@ void dump1090::processMessage(const std::string &t_msg, uint64_t t_received)
                 auto speed = sbs1_to_double(data[sbs1_field_groundspeed], 0.0, max_speed);
                 if (speed.has_value())
                 {
-                    adsb.setSpeed(*speed);
+                    adsb.setSpeed(*speed, t_received);
                 }
                 auto track = sbs1_to_double(data[sbs1_field_track], 0.0, max_track);
                 if (track.has_value())
                 {
-                    adsb.setHeading(*track);
+                    adsb.setHeading(*track, t_received);
                 }
                 if (!data[sbs1_field_vertrate].empty())
                 {
-                    adsb.setVertVel(sbs1_to_vertrate(data[sbs1_field_vertrate]));
+                    adsb.setVertVel(sbs1_to_vertrate(data[sbs1_field_vertrate]), t_received);
                 }
                 break;
             }
             case sbs1_id_surveillance_id:
                 if (!data[sbs1_field_squawk].empty())
                 {
-                    adsb.setSquawk(sbs1_to_u16(data[sbs1_field_squawk]));
+                    adsb.setSquawk(sbs1_to_u16(data[sbs1_field_squawk]), t_received);
                 }
                 /* MSG,6 carries altitude alongside the squawk; consume it like
                  * MSG,5/MSG,7 below. */
                 if (!data[sbs1_field_altitude].empty())
                 {
-                    adsb.setAltitude(sbs1_to_altitude(data[sbs1_field_altitude]));
+                    adsb.setAltitude(sbs1_to_altitude(data[sbs1_field_altitude]), t_received);
                 }
                 break;
             case sbs1_id_surveillance_alt:
@@ -332,7 +332,7 @@ void dump1090::processMessage(const std::string &t_msg, uint64_t t_received)
                  * altitude fresh between MSG,3s. */
                 if (!data[sbs1_field_altitude].empty())
                 {
-                    adsb.setAltitude(sbs1_to_altitude(data[sbs1_field_altitude]));
+                    adsb.setAltitude(sbs1_to_altitude(data[sbs1_field_altitude]), t_received);
                 }
                 break;
             case sbs1_id_surface_pos:

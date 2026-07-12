@@ -716,6 +716,111 @@ TEST_CASE("build_report maps every field and converts units from the record", "[
     CHECK(report->flags == adsb_report::report_flags(record));
 }
 
+// ---------------------------------------------------------------------------
+// Per-field freshness expiry
+// ---------------------------------------------------------------------------
+
+TEST_CASE("report_flags keeps a fresh motion field valid", "[record][freshness]")
+{
+    using namespace adsb_report;
+    ADSBData record(0x1);
+    record.setAltitude(1000, 1000);
+
+    CHECK((report_flags(record, 1000) & valid_altitude) != 0);                           // just observed
+    CHECK((report_flags(record, 1000 + motion_freshness_ms - 1) & valid_altitude) != 0); // not quite expired
+}
+
+TEST_CASE("report_flags clears a motion field once its window expires", "[record][freshness]")
+{
+    using namespace adsb_report;
+    ADSBData record(0x1);
+    record.setHeading(90, 1000);
+
+    // Exactly at the window: expired, matching ADSBData::isStale's >= convention.
+    CHECK((report_flags(record, 1000 + motion_freshness_ms) & valid_heading) == 0);
+    CHECK((report_flags(record, 1000 + motion_freshness_ms + 1) & valid_heading) == 0);
+    // The record still remembers the value -- only the validity bit is cleared.
+    CHECK(record.getHeading() == 90);
+}
+
+TEST_CASE("identity fields stay valid long after motion fields have expired", "[record][freshness]")
+{
+    using namespace adsb_report;
+    ADSBData record(0x1);
+    record.setAltitude(1000, 0);
+    record.setHeading(90, 0);
+    record.setSpeed(100, 0);
+    record.setVertVel(500, 0);
+    record.setCallsign("QFA123", 0);
+    record.setSquawk(7000, 0);
+
+    // Past the motion window but still inside the identity window.
+    uint64_t as_of = motion_freshness_ms + 1;
+    REQUIRE(as_of < identity_freshness_ms);
+    uint16_t flags = report_flags(record, as_of);
+
+    CHECK((flags & valid_altitude) == 0);
+    CHECK((flags & valid_heading) == 0);
+    CHECK((flags & valid_speed) == 0);
+    CHECK((flags & valid_vertvel) == 0);
+    CHECK((flags & valid_callsign) != 0);
+    CHECK((flags & valid_squawk) != 0);
+
+    // Past the identity window too: those clear as well.
+    uint16_t later_flags = report_flags(record, identity_freshness_ms);
+    CHECK((later_flags & valid_callsign) == 0);
+    CHECK((later_flags & valid_squawk) == 0);
+}
+
+TEST_CASE("a newly received field is immediately valid again after expiring", "[record][freshness]")
+{
+    using namespace adsb_report;
+    ADSBData record(0x1);
+
+    ADSBData first(0x1);
+    first.setSpeed(100, 1000);
+    update_record(record, first);
+    REQUIRE((report_flags(record, 1000 + motion_freshness_ms) & valid_speed) == 0); // expired
+
+    ADSBData refresh(0x1);
+    refresh.setSpeed(120, 1000 + motion_freshness_ms);
+    update_record(record, refresh);
+
+    CHECK(record.getSpeed() == 120);
+    CHECK((report_flags(record, 1000 + motion_freshness_ms) & valid_speed) != 0);
+}
+
+TEST_CASE("build_report reports a current position alongside expired velocity as such", "[record][freshness]")
+{
+    using namespace adsb_report;
+    ADSBData record(0x1);
+    record.setHeading(90, 0);
+    record.setSpeed(100, 0);
+
+    ADSBData msg(0x1);
+    msg.setPosition(Point(-36.8485, 174.7633));
+    msg.setLastSeen(motion_freshness_ms + 1); // position arrives long after the velocity was last observed
+
+    auto report = build_report(record, msg);
+    REQUIRE(report.has_value());
+    CHECK((report->flags & valid_coords) != 0);
+    CHECK((report->flags & valid_heading) == 0);
+    CHECK((report->flags & valid_speed) == 0);
+}
+
+TEST_CASE("aircraft-level eviction is independent of per-field expiry", "[record][freshness]")
+{
+    // last_seen tracks whether the aircraft is heard from at all; a field
+    // observed long ago must not make isStale() see the whole record as stale
+    // when a different, more recent message kept last_seen fresh.
+    ADSBData record(0x1);
+    record.setAltitude(1000, 0);
+    record.setLastSeen(1000);
+
+    constexpr uint64_t window = 600000;
+    CHECK_FALSE(record.isStale(1000 + adsb_report::motion_freshness_ms + 1, window));
+}
+
 TEST_CASE("derive_tslc reflects receive time, not send time", "[record]")
 {
     using adsb_report::derive_tslc;
