@@ -16,9 +16,17 @@ AX_CXX_COMPILE_STDCXX([17],[],[mandatory])
 # Check for required pkg-config modules. fss-client-ssl pulls in the rest of
 # the flight-safety-system stack; fss-transport is used directly for the
 # position-report message type. Threading is via -pthread in AM_CXXFLAGS.
+#
+# FSS_MIN_VERSION is the single source of truth for the minimum supported
+# flight-safety-system release: fss_reporter_client::reportAircraft()
+# (src/fss-reporter.cpp) relies on connection-pointer synchronization
+# introduced in this version so sendMsgAll() can run concurrently with
+# attemptReconnect(). check-code.sh cross-checks this value against the
+# versioned dependencies in debian/control, so bump both together.
+FSS_MIN_VERSION=1.0.2
 PKG_PROG_PKG_CONFIG
-PKG_CHECK_MODULES([FSS_CLIENT_SSL], [fss-client-ssl])
-PKG_CHECK_MODULES([FSS_TRANSPORT], [fss-transport])
+PKG_CHECK_MODULES([FSS_CLIENT_SSL], [fss-client-ssl >= $FSS_MIN_VERSION])
+PKG_CHECK_MODULES([FSS_TRANSPORT], [fss-transport >= $FSS_MIN_VERSION])
 
 # Catch2 v3 (system package, linked via pkg-config) is preferred for the test
 # suite, but it is not available everywhere this is packaged: Debian bookworm

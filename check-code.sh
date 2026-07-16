@@ -48,3 +48,20 @@ printf '%s\n' src/*.cpp \
     | xargs -P "$(nproc)" -I{} "$clang_tidy" --extra-arg=-Wno-unknown-warning-option -p . {} 2>&1 \
     | tee clang-tidy.log
 ! grep -q "warning:" clang-tidy.log
+
+# configure.ac's FSS_MIN_VERSION is the source of truth for the minimum
+# flight-safety-system version this program requires; debian/control's
+# versioned Build-Depends/Depends are a second, independent packaging
+# surface that has to be bumped in step by hand. Catch drift between them
+# here rather than at package-build time.
+configure_min="$(sed -n 's/^FSS_MIN_VERSION=//p' configure.ac)"
+control_versions="$(grep -oP 'lib\S+ \(>= \K[0-9.]+(?=\))' debian/control | sort -u)"
+if [ -z "$configure_min" ]; then
+    echo "check-code.sh: could not find FSS_MIN_VERSION in configure.ac" >&2
+    exit 1
+fi
+if [ "$control_versions" != "$configure_min" ]; then
+    echo "check-code.sh: configure.ac requires flight-safety-system >= $configure_min" \
+        "but debian/control's versioned dependencies are: $(echo "$control_versions" | tr '\n' ' ')" >&2
+    exit 1
+fi
