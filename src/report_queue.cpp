@@ -1,8 +1,12 @@
 #include "report_queue.hpp"
 
+#include <cassert>
 #include <utility>
 
-report_queue::report_queue(size_t t_capacity) : capacity(t_capacity) {}
+report_queue::report_queue(size_t t_capacity) : capacity(t_capacity)
+{
+    assert(t_capacity >= 1 && "report_queue capacity must be at least 1");
+}
 
 void report_queue::push(uint32_t icao_address, pending_report item)
 {
