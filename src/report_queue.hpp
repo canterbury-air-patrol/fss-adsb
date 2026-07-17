@@ -28,7 +28,8 @@ struct pending_report {
  * rather than growing the queue. If a push() would add a new distinct
  * address beyond capacity, the oldest still-queued distinct address is
  * dropped to make room for it, favouring the newest aircraft to appear over
- * a stale one that has been waiting the longest. Requires capacity >= 1. */
+ * a stale one that has been waiting the longest. Requires capacity >= 1
+ * (enforced by the constructor). */
 class report_queue {
 private:
     mutable std::mutex lock{};
