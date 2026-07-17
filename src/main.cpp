@@ -5,9 +5,7 @@
 #include <iostream>
 #include <csignal>
 #include <cstdlib>
-#include <map>
 #include <memory>
-#include <mutex>
 #include <optional>
 
 #include <string>
@@ -18,11 +16,13 @@
 #include <fss-log.hpp>
 
 #include "adsb_record.hpp"
+#include "aircraft_registry.hpp"
 #include "args.hpp"
 #include "dump1090.hpp"
 #include "fss-reporter.hpp"
 #include "report_queue.hpp"
 #include "reporting_worker.hpp"
+#include "shutdown_signal.hpp"
 
 /* Log component/category for this module. */
 constexpr const char *log_component = "adsb";
@@ -34,51 +34,30 @@ std::shared_ptr<fss_reporter_client> fss;
  * distinct-aircraft count for one receiver, while still bounding worst-case
  * memory deterministically. handle_adsb_data() is a plain callback (see
  * notify_dump1090_adsb_data_cb), so this has to be reachable as a global,
- * same as known_aircraft and fss below. Constructed in main() (like fss),
- * not here: report_queue's constructor is not noexcept, and a global with
- * static storage duration whose constructor might throw can abort before
- * main() even starts, with no way to catch it. A default-constructed
+ * same as g_aircraft_registry and fss below. Constructed in main() (like
+ * fss), not here: report_queue's constructor is not noexcept, and a global
+ * with static storage duration whose constructor might throw can abort
+ * before main() even starts, with no way to catch it. A default-constructed
  * unique_ptr never throws. */
 constexpr size_t report_queue_capacity = 4096;
 std::unique_ptr<report_queue> g_report_queue;
 
-volatile std::sig_atomic_t running = 1;
-
-void sigIntHandler(__attribute__((unused)) int signum)
-{
-    running = 0;
-}
-
-std::map<uint32_t, ADSBData> known_aircraft;
-std::mutex known_aircraft_lock;
+aircraft_registry g_aircraft_registry;
 
 void handle_adsb_data(const ADSBData &adsb)
 {
     FSS_LOG_DEBUG(log_component, "ADSB Data for " << std::uppercase << std::hex << adsb.getICAOAddress());
-    /* Hold the lock only for the record fold. Reporting is hand-off-and-go:
-     * g_report_queue->push() never blocks (see report_queue.hpp), so it does
-     * not matter whether it happens inside or outside the lock, but doing it
-     * outside keeps the lock's scope minimal regardless. */
-    /* The message carries the timestamp of the recv() that produced it. Using
-     * it for the report (rather than stamping "now" here) keeps the report
-     * honest when the reporting worker's queue backs up: a position that
-     * queued for minutes must not be reported as seen 0 seconds ago, now. */
-    uint64_t received = adsb.getLastSeen();
-    std::optional<adsb_report::position_report> report;
-    {
-        std::unique_lock<std::mutex> lk(known_aircraft_lock);
-        auto [it, inserted] = known_aircraft.try_emplace(adsb.getICAOAddress(), adsb.getICAOAddress());
-        ADSBData &aircraft = it->second;
-        aircraft.setLastSeen(received);
-        adsb_report::update_record(aircraft, adsb);
-        FSS_LOG_DEBUG(log_component, "Callsign: " << aircraft.getCallsign());
-        report = adsb_report::build_report(aircraft, adsb);
-    }
+    auto report = g_aircraft_registry.fold(adsb);
     if (report)
     {
         FSS_LOG_DEBUG(log_component, "Queueing report for " << std::uppercase << std::hex << report->icao_address
                                                             << " (" << report->callsign << ")");
-        g_report_queue->push(report->icao_address, pending_report{*report, received});
+        /* The message carries the timestamp of the recv() that produced it.
+         * Using it for the report (rather than stamping "now" here) keeps
+         * the report honest when the reporting worker's queue backs up: a
+         * position that queued for minutes must not be reported as seen 0
+         * seconds ago, now. */
+        g_report_queue->push(report->icao_address, pending_report{*report, adsb.getLastSeen()});
     }
 }
 
@@ -86,19 +65,9 @@ void evict_stale_aircraft()
 {
     constexpr uint64_t stale_window_ms = UINT64_C(10) * 60 * 1000;
     uint64_t now = flight_safety_system::fss_current_timestamp();
-    std::unique_lock<std::mutex> lk(known_aircraft_lock);
-    for (auto it = known_aircraft.begin(); it != known_aircraft.end();)
+    for (uint32_t address : g_aircraft_registry.evict_stale(now, stale_window_ms))
     {
-        if (it->second.isStale(now, stale_window_ms))
-        {
-            FSS_LOG_INFO(log_component,
-                         "Evicting stale aircraft " << std::uppercase << std::hex << it->second.getICAOAddress());
-            it = known_aircraft.erase(it);
-        }
-        else
-        {
-            ++it;
-        }
+        FSS_LOG_INFO(log_component, "Evicting stale aircraft " << std::uppercase << std::hex << address);
     }
 }
 
