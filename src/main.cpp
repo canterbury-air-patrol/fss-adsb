@@ -21,11 +21,26 @@
 #include "args.hpp"
 #include "dump1090.hpp"
 #include "fss-reporter.hpp"
+#include "report_queue.hpp"
+#include "reporting_worker.hpp"
 
 /* Log component/category for this module. */
 constexpr const char *log_component = "adsb";
 
 std::shared_ptr<fss_reporter_client> fss;
+
+/* At most one queued position per distinct ICAO address (see
+ * report_queue.hpp); generous versus any realistic simultaneous
+ * distinct-aircraft count for one receiver, while still bounding worst-case
+ * memory deterministically. handle_adsb_data() is a plain callback (see
+ * notify_dump1090_adsb_data_cb), so this has to be reachable as a global,
+ * same as known_aircraft and fss below. Constructed in main() (like fss),
+ * not here: report_queue's constructor is not noexcept, and a global with
+ * static storage duration whose constructor might throw can abort before
+ * main() even starts, with no way to catch it. A default-constructed
+ * unique_ptr never throws. */
+constexpr size_t report_queue_capacity = 4096;
+std::unique_ptr<report_queue> g_report_queue;
 
 volatile std::sig_atomic_t running = 1;
 
@@ -40,13 +55,14 @@ std::mutex known_aircraft_lock;
 void handle_adsb_data(const ADSBData &adsb)
 {
     FSS_LOG_DEBUG(log_component, "ADSB Data for " << std::uppercase << std::hex << adsb.getICAOAddress());
-    /* Hold the lock only for the record fold. reportAircraft() is a blocking
-     * TLS send; doing it under the lock would let a stalled server block
-     * evict_stale_aircraft() — and with it the whole main loop. */
+    /* Hold the lock only for the record fold. Reporting is hand-off-and-go:
+     * g_report_queue->push() never blocks (see report_queue.hpp), so it does
+     * not matter whether it happens inside or outside the lock, but doing it
+     * outside keeps the lock's scope minimal regardless. */
     /* The message carries the timestamp of the recv() that produced it. Using
      * it for the report (rather than stamping "now" here) keeps the report
-     * honest when this blocking send path backs up: a position that queued for
-     * minutes must not be reported as seen 0 seconds ago, now. */
+     * honest when the reporting worker's queue backs up: a position that
+     * queued for minutes must not be reported as seen 0 seconds ago, now. */
     uint64_t received = adsb.getLastSeen();
     std::optional<adsb_report::position_report> report;
     {
@@ -60,16 +76,9 @@ void handle_adsb_data(const ADSBData &adsb)
     }
     if (report)
     {
-        FSS_LOG_DEBUG(log_component, "Reporting position for " << std::uppercase << std::hex << report->icao_address
-                                                               << " (" << report->callsign << ")");
-        fss->reportAircraft(report->position, report->altitude, report->heading, report->hor_vel, report->ver_vel,
-                            report->icao_address, report->callsign, report->squawk,
-                            adsb_report::derive_tslc(received, flight_safety_system::fss_current_timestamp()),
-                            report->flags,
-                            /* dump1090 reports barometric pressure altitude (QNE/standard datum), not QNH */
-                            0,
-                            /* Type is probably known */
-                            0, received);
+        FSS_LOG_DEBUG(log_component, "Queueing report for " << std::uppercase << std::hex << report->icao_address
+                                                            << " (" << report->callsign << ")");
+        g_report_queue->push(report->icao_address, pending_report{*report, received});
     }
 }
 
@@ -141,6 +150,16 @@ auto main(int argc, char *argv[]) -> int
 
     /* Connect to FSS Server */
     fss = std::make_shared<fss_reporter_client>(argv[3], *fss_port, argv[5], argv[6], argv[7]);
+    g_report_queue = std::make_unique<report_queue>(report_queue_capacity);
+
+    /* The reporting worker must be constructed before dumper below (and so,
+     * torn down after it -- see dumper.disconnect()/worker.stop() at the end
+     * of this function): dumper's destructor joins the receive thread first,
+     * guaranteeing no more g_report_queue->push() calls, before worker's
+     * destructor shuts the queue down and joins the reporting thread, so
+     * every report that is ever queued gets a chance to be sent (or at least
+     * attempted) before the worker stops. */
+    reporting_worker worker(*fss, *g_report_queue);
 
     /* Connect to Dump1090. The callback goes in via the constructor so it is
      * in place before the receive thread can deliver the first message. */
@@ -160,7 +179,13 @@ auto main(int argc, char *argv[]) -> int
         }
     }
 
+    /* Explicit, in this order: dumper first (stop ingestion, no more
+     * pushes), then worker (drain whatever is left, then stop). Both
+     * destructors repeat this idempotently as a backstop on any other return
+     * path (there is none today, but a future early return must not silently
+     * skip this ordering). */
     dumper.disconnect();
+    worker.stop();
 
     return 0;
 }
