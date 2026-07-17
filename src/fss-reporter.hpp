@@ -3,9 +3,10 @@
 #include <fss-transport.hpp>
 #include <fss-client-ssl.hpp>
 
+#include "aircraft_reporter.hpp"
 #include "point.hpp"
 
-class fss_reporter_client : public flight_safety_system::client_ssl::fss_client {
+class fss_reporter_client : public flight_safety_system::client_ssl::fss_client, public aircraft_reporter {
 private:
     /* Our own copies of the TLS credential paths. The base fss_client stores
      * these privately and only uses them from its own connectTo(); because we
@@ -20,7 +21,7 @@ public:
     void reportAircraft(const Point &t_position, uint32_t t_altitude, uint16_t t_heading, uint16_t t_hor_vel,
                         int16_t t_ver_vel, uint32_t t_icao_address, const std::string &t_callsign, uint16_t t_squawk,
                         uint8_t t_tslc, uint16_t t_flags, uint8_t t_alt_type, uint8_t t_emitter_type,
-                        uint64_t t_timestamp);
+                        uint64_t t_timestamp) override;
     void connectTo(const std::string &t_address, uint16_t t_port, bool t_connect) override;
 };
 
