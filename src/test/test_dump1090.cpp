@@ -12,7 +12,9 @@ using Catch::Approx;
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstring>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
@@ -26,8 +28,11 @@ using Catch::Approx;
 #include <unistd.h>
 
 #include "../adsb_record.hpp"
+#include "../aircraft_reporter.hpp"
 #include "../args.hpp"
 #include "../dump1090.hpp"
+#include "../report_queue.hpp"
+#include "../reporting_worker.hpp"
 #include "../units.hpp"
 
 // adsb_cb is a plain C function pointer (void(*)(const ADSBData&)) so it cannot carry
@@ -131,6 +136,95 @@ template<typename Predicate> bool wait_for(Predicate pred, std::chrono::millisec
     }
     return pred();
 }
+
+// A pending_report with just enough set to identify it by ICAO address in
+// the [queue]/[worker] tests below; the report content itself is not under
+// test there (adsb_record.hpp's own tests already cover build_report()).
+pending_report make_item(uint32_t icao, uint64_t received = 0)
+{
+    pending_report item;
+    item.report.icao_address = icao;
+    item.received = received;
+    return item;
+}
+
+// aircraft_reporter test double for [worker] tests. reportAircraft() records
+// every call under a mutex (calls happen on the worker thread, assertions run
+// on the test thread) and can be told to block on a condition variable the
+// test controls, simulating a stalled FSS peer -- the scenario
+// todo/decouple-ingestion-from-reporting.md is about.
+class fake_reporter : public aircraft_reporter {
+private:
+    std::mutex m;
+    std::condition_variable cv;
+    std::vector<uint32_t> calls_icao;
+    std::vector<uint8_t> calls_tslc;
+    bool blocking{false};
+    bool release{false};
+    bool entered_block{false};
+public:
+    void reportAircraft(const Point & /*t_position*/, uint32_t /*t_altitude*/, uint16_t /*t_heading*/,
+                        uint16_t /*t_hor_vel*/, int16_t /*t_ver_vel*/, uint32_t t_icao_address,
+                        const std::string & /*t_callsign*/, uint16_t /*t_squawk*/, uint8_t t_tslc, uint16_t /*t_flags*/,
+                        uint8_t /*t_alt_type*/, uint8_t /*t_emitter_type*/, uint64_t /*t_timestamp*/) override
+    {
+        std::unique_lock<std::mutex> lk(this->m);
+        if (this->blocking)
+        {
+            this->entered_block = true;
+            this->cv.notify_all();
+            this->cv.wait(lk, [this]() -> bool { return this->release; });
+        }
+        this->calls_icao.push_back(t_icao_address);
+        this->calls_tslc.push_back(t_tslc);
+    }
+
+    // The next call to reportAircraft() will block until release_blocked_call().
+    void block_next_call()
+    {
+        std::unique_lock<std::mutex> lk(this->m);
+        this->blocking = true;
+        this->release = false;
+        this->entered_block = false;
+    }
+
+    void release_blocked_call()
+    {
+        {
+            std::unique_lock<std::mutex> lk(this->m);
+            this->release = true;
+        }
+        this->cv.notify_all();
+    }
+
+    bool wait_entered_block(std::chrono::milliseconds timeout)
+    {
+        return wait_for(
+            [this] {
+                std::unique_lock<std::mutex> lk(this->m);
+                return this->entered_block;
+            },
+            timeout);
+    }
+
+    size_t call_count()
+    {
+        std::unique_lock<std::mutex> lk(this->m);
+        return this->calls_icao.size();
+    }
+
+    std::vector<uint32_t> icaos()
+    {
+        std::unique_lock<std::mutex> lk(this->m);
+        return this->calls_icao;
+    }
+
+    std::vector<uint8_t> tslcs()
+    {
+        std::unique_lock<std::mutex> lk(this->m);
+        return this->calls_tslc;
+    }
+};
 
 } // namespace
 
@@ -1232,4 +1326,202 @@ TEST_CASE("dump1090 destructor cleans up a live connection", "[reconnect]")
     }
     close(listen_fd);
     SUCCEED("destructor returned without terminate or hang");
+}
+
+// ---------------------------------------------------------------------------
+// report_queue — see todo/decouple-ingestion-from-reporting.md
+// ---------------------------------------------------------------------------
+
+TEST_CASE("report_queue delivers distinct ICAOs in FIFO order", "[queue]")
+{
+    report_queue q(4);
+    q.push(0x1, make_item(0x1));
+    q.push(0x2, make_item(0x2));
+    q.push(0x3, make_item(0x3));
+
+    CHECK(q.pop()->report.icao_address == 0x1);
+    CHECK(q.pop()->report.icao_address == 0x2);
+    CHECK(q.pop()->report.icao_address == 0x3);
+}
+
+TEST_CASE("report_queue coalesces repeated pushes to one ICAO, keeping FIFO position", "[queue]")
+{
+    report_queue q(4);
+    q.push(0x1, make_item(0x1, 100));
+    q.push(0x2, make_item(0x2));
+    // Second update for 0x1 before it is popped: replaces the value, but must
+    // not grow the queue or move to the back of the FIFO -- otherwise a
+    // noisy aircraft could starve quieter ones indefinitely.
+    q.push(0x1, make_item(0x1, 200));
+
+    CHECK(q.size() == 2);
+    auto first = q.pop();
+    REQUIRE(first.has_value());
+    CHECK(first->report.icao_address == 0x1);
+    CHECK(first->received == 200);
+    CHECK(q.pop()->report.icao_address == 0x2);
+}
+
+TEST_CASE("report_queue evicts the oldest distinct entry once capacity is exceeded", "[queue]")
+{
+    report_queue q(2);
+    q.push(0x1, make_item(0x1));
+    q.push(0x2, make_item(0x2));
+    // Capacity 2, already full of distinct addresses: this must evict 0x1
+    // (the oldest), not 0x2, and not itself.
+    q.push(0x3, make_item(0x3));
+
+    CHECK(q.size() == 2);
+    CHECK(q.pop()->report.icao_address == 0x2);
+    CHECK(q.pop()->report.icao_address == 0x3);
+}
+
+TEST_CASE("report_queue::pop blocks until an item is pushed", "[queue]")
+{
+    report_queue q(4);
+    std::atomic<bool> popped{false};
+    std::optional<pending_report> result;
+
+    std::thread t([&] {
+        result = q.pop();
+        popped = true;
+    });
+
+    // Give pop() a real chance to be blocked before pushing.
+    CHECK_FALSE(wait_for([&] { return popped.load(); }, std::chrono::milliseconds(100)));
+
+    q.push(0x42, make_item(0x42));
+    REQUIRE(wait_for([&] { return popped.load(); }, std::chrono::seconds(2)));
+    t.join();
+
+    REQUIRE(result.has_value());
+    CHECK(result->report.icao_address == 0x42);
+}
+
+TEST_CASE("report_queue::shutdown drains already-queued items before returning nullopt", "[queue]")
+{
+    report_queue q(4);
+    q.push(0x1, make_item(0x1));
+    q.push(0x2, make_item(0x2));
+    q.shutdown();
+
+    // Already-queued items must still be delivered -- shutdown must not
+    // discard data, only stop pop() from blocking forever once empty.
+    CHECK(q.pop()->report.icao_address == 0x1);
+    CHECK(q.pop()->report.icao_address == 0x2);
+    CHECK_FALSE(q.pop().has_value());
+}
+
+TEST_CASE("report_queue::shutdown wakes a pop() blocked on an empty queue", "[queue]")
+{
+    report_queue q(4);
+    std::atomic<bool> popped{false};
+    std::optional<pending_report> result;
+
+    std::thread t([&] {
+        result = q.pop();
+        popped = true;
+    });
+
+    CHECK_FALSE(wait_for([&] { return popped.load(); }, std::chrono::milliseconds(100)));
+
+    q.shutdown();
+    REQUIRE(wait_for([&] { return popped.load(); }, std::chrono::seconds(2)));
+    t.join();
+
+    CHECK_FALSE(result.has_value());
+}
+
+// ---------------------------------------------------------------------------
+// reporting_worker — see todo/decouple-ingestion-from-reporting.md
+// ---------------------------------------------------------------------------
+
+TEST_CASE("reporting_worker delivers queued reports to the aircraft_reporter", "[worker]")
+{
+    report_queue q(4);
+    fake_reporter reporter;
+    {
+        reporting_worker worker(reporter, q);
+        q.push(0x1, make_item(0x1));
+        q.push(0x2, make_item(0x2));
+        REQUIRE(wait_for([&] { return reporter.call_count() == 2; }, std::chrono::seconds(2)));
+    }
+
+    auto calls = reporter.icaos();
+    REQUIRE(calls.size() == 2);
+    CHECK(calls[0] == 0x1);
+    CHECK(calls[1] == 0x2);
+}
+
+TEST_CASE("reporting_worker derives tslc at the send attempt, not at queue time", "[worker]")
+{
+    report_queue q(4);
+    fake_reporter reporter;
+    {
+        reporting_worker worker(reporter, q);
+        // received == 0 means "epoch": whatever the real clock reads when the
+        // worker actually calls reportAircraft() is necessarily long after
+        // that, so tslc must come out strictly positive -- it cannot have
+        // been stamped once, up front, at queue time.
+        q.push(0x1, make_item(0x1, 0));
+        REQUIRE(wait_for([&] { return reporter.call_count() == 1; }, std::chrono::seconds(2)));
+    }
+
+    auto tslcs = reporter.tslcs();
+    REQUIRE(tslcs.size() == 1);
+    CHECK(tslcs[0] > 0);
+}
+
+TEST_CASE("a blocked reportAircraft() does not block report_queue::push()", "[worker]")
+{
+    report_queue q(64);
+    fake_reporter reporter;
+    reporter.block_next_call();
+    reporting_worker worker(reporter, q);
+
+    // Get the first item popped and stuck inside the (blocked) reportAircraft().
+    q.push(0x0, make_item(0x0));
+    REQUIRE(reporter.wait_entered_block(std::chrono::seconds(2)));
+
+    // The core regression test: with the reporter wedged mid-call (a stalled
+    // FSS send), further pushes -- standing in for dump1090's receive
+    // thread -- must complete promptly regardless. 50 distinct addresses,
+    // well under the 64 capacity so no eviction confuses the count.
+    auto start = std::chrono::steady_clock::now();
+    for (uint32_t icao = 1; icao <= 50; icao++)
+    {
+        q.push(icao, make_item(icao));
+    }
+    auto elapsed = std::chrono::steady_clock::now() - start;
+    CHECK(elapsed < std::chrono::milliseconds(200));
+
+    reporter.release_blocked_call();
+    REQUIRE(wait_for([&] { return reporter.call_count() == 51; }, std::chrono::seconds(2)));
+    worker.stop();
+}
+
+TEST_CASE("reporting_worker::stop drains queued reports before stopping", "[worker]")
+{
+    report_queue q(16);
+    fake_reporter reporter;
+    reporting_worker worker(reporter, q);
+
+    for (uint32_t icao = 1; icao <= 10; icao++)
+    {
+        q.push(icao, make_item(icao));
+    }
+    worker.stop();
+
+    CHECK(reporter.call_count() == 10);
+}
+
+TEST_CASE("reporting_worker::stop is idempotent", "[worker]")
+{
+    report_queue q(4);
+    fake_reporter reporter;
+    reporting_worker worker(reporter, q);
+
+    worker.stop();
+    worker.stop();
+    SUCCEED("second stop() returned without hanging or double-joining");
 }
