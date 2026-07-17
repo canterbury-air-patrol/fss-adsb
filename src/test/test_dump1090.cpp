@@ -235,7 +235,7 @@ public:
 // Valid messages — one per handled SBS-1 transmission type
 // ---------------------------------------------------------------------------
 
-TEST_CASE_METHOD(ParserFixture, "MSG type 1 (ident) sets callsign", "[parser][valid]")
+TEST_CASE_METHOD(ParserFixture, "MSG type 1 (ident) sets callsign", "[parser][valid][PATH-E-e01]")
 {
     feed(makeMsg("1", "ABC123", "QFA123  "));
     REQUIRE(g_call_count == 1);
@@ -246,7 +246,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 1 (ident) sets callsign", "[parser][va
     CHECK_FALSE(g_captured->validAltitude());
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG type 3 (airborne pos) sets position and altitude", "[parser][valid]")
+TEST_CASE_METHOD(ParserFixture, "MSG type 3 (airborne pos) sets position and altitude", "[parser][valid][PATH-E-e01]")
 {
     feed(makeMsg("3", "ABCDEF", "", "35000", "", "", "-36.8485", "174.7633"));
     REQUIRE(g_call_count == 1);
@@ -259,7 +259,8 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 3 (airborne pos) sets position and alt
     CHECK(p.getLongitude() == Approx(174.7633));
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG type 4 (airborne vel) sets speed, heading and vert rate", "[parser][valid]")
+TEST_CASE_METHOD(ParserFixture, "MSG type 4 (airborne vel) sets speed, heading and vert rate",
+                 "[parser][valid][PATH-E-e01]")
 {
     feed(makeMsg("4", "A12345", "", "", "450", "270", "", "", "-1024"));
     REQUIRE(g_call_count == 1);
@@ -271,7 +272,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 4 (airborne vel) sets speed, heading a
     CHECK(g_captured->getVertVel() == -1024);
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG type 4 fractional speed and track are preserved", "[parser][valid]")
+TEST_CASE_METHOD(ParserFixture, "MSG type 4 fractional speed and track are preserved", "[parser][valid][PATH-E-e01]")
 {
     // SBS-1 emits these with a decimal fraction; the integer parse used to
     // stop at the dot, reporting 270.5 deg as 27000 centidegrees.
@@ -281,7 +282,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 4 fractional speed and track are prese
     CHECK(g_captured->getHeading() == Approx(270.5));
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG type 3 negative altitude clamps to 0", "[parser][clamp]")
+TEST_CASE_METHOD(ParserFixture, "MSG type 3 negative altitude clamps to 0", "[parser][clamp][PATH-E-e01]")
 {
     // Aircraft below sea level (e.g. Schiphol at -13 ft). strtoul would have
     // returned ~ULONG_MAX-99; sbs1_to_altitude must clamp to 0.
@@ -291,7 +292,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 3 negative altitude clamps to 0", "[pa
     CHECK(g_captured->getAltitude() == 0);
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG type 4 vert rate too high clamps to INT16_MAX", "[parser][clamp]")
+TEST_CASE_METHOD(ParserFixture, "MSG type 4 vert rate too high clamps to INT16_MAX", "[parser][clamp][PATH-E-e01]")
 {
     feed(makeMsg("4", "A12345", "", "", "0", "0", "", "", "70000"));
     REQUIRE(g_call_count == 1);
@@ -299,7 +300,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 4 vert rate too high clamps to INT16_M
     CHECK(g_captured->getVertVel() == INT16_MAX);
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG type 4 vert rate too low clamps to INT16_MIN", "[parser][clamp]")
+TEST_CASE_METHOD(ParserFixture, "MSG type 4 vert rate too low clamps to INT16_MIN", "[parser][clamp][PATH-E-e01]")
 {
     feed(makeMsg("4", "A12345", "", "", "0", "0", "", "", "-70000"));
     REQUIRE(g_call_count == 1);
@@ -307,7 +308,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 4 vert rate too low clamps to INT16_MI
     CHECK(g_captured->getVertVel() == INT16_MIN);
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG type 4 track outside 0-360 leaves heading unset", "[parser][clamp]")
+TEST_CASE_METHOD(ParserFixture, "MSG type 4 track outside 0-360 leaves heading unset", "[parser][clamp][PATH-E-e01]")
 {
     // A track of 70000 used to be "clamped" to UINT16_MAX; corrupt data is
     // now rejected rather than reshaped into a plausible-looking heading.
@@ -322,7 +323,8 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 4 track outside 0-360 leaves heading u
     }
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG type 4 negative or garbage ground speed leaves speed unset", "[parser][clamp]")
+TEST_CASE_METHOD(ParserFixture, "MSG type 4 negative or garbage ground speed leaves speed unset",
+                 "[parser][clamp][PATH-E-e01]")
 {
     for (const char *gs : {"-5", "garbage", "145.6x"})
     {
@@ -336,7 +338,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 4 negative or garbage ground speed lea
 }
 
 TEST_CASE_METHOD(ParserFixture, "MSG type 4 huge ground speed is stored; the report conversion clamps",
-                 "[parser][clamp]")
+                 "[parser][clamp][PATH-E-e01]")
 {
     feed(makeMsg("4", "A12345", "", "", "99999999999", "0", "", "", "0"));
     REQUIRE(g_call_count == 1);
@@ -345,7 +347,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 4 huge ground speed is stored; the rep
     // knots_to_cm_per_s clamps to the uint16 wire field (see [units]).
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG type 6 squawk > UINT16_MAX clamps to UINT16_MAX", "[parser][clamp]")
+TEST_CASE_METHOD(ParserFixture, "MSG type 6 squawk > UINT16_MAX clamps to UINT16_MAX", "[parser][clamp][PATH-E-e01]")
 {
     feed(makeMsg("6", "A12345", "", "", "", "", "", "", "", "70000"));
     REQUIRE(g_call_count == 1);
@@ -353,7 +355,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 6 squawk > UINT16_MAX clamps to UINT16
     CHECK(g_captured->getSquawk() == UINT16_MAX);
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG type 6 (surveillance id) sets squawk", "[parser][valid]")
+TEST_CASE_METHOD(ParserFixture, "MSG type 6 (surveillance id) sets squawk", "[parser][valid][PATH-E-e01]")
 {
     feed(makeMsg("6", "A12345", "", "", "", "", "", "", "", "7700"));
     REQUIRE(g_call_count == 1);
@@ -361,7 +363,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 6 (surveillance id) sets squawk", "[pa
     CHECK(g_captured->getSquawk() == 7700);
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG types 5/6/7 with an altitude set it", "[parser][valid]")
+TEST_CASE_METHOD(ParserFixture, "MSG types 5/6/7 with an altitude set it", "[parser][valid][PATH-E-e01]")
 {
     // Mode-S-only aircraft emit nothing but these; discarding their altitude
     // meant such targets never gained one at all.
@@ -378,7 +380,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG types 5/6/7 with an altitude set it", "[par
     }
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG types 2/5/7/8 with empty fields set no data fields", "[parser][valid]")
+TEST_CASE_METHOD(ParserFixture, "MSG types 2/5/7/8 with empty fields set no data fields", "[parser][valid][PATH-E-e01]")
 {
     // Type 2 (surface position) deliberately reports nothing, but the callback
     // must still fire so a taxiing aircraft's last_seen stays fresh. Types 5/7
@@ -401,7 +403,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG types 2/5/7/8 with empty fields set no data
 // ---------------------------------------------------------------------------
 
 TEST_CASE_METHOD(ParserFixture, "MSG type 3 garbage or trailing-junk altitude leaves altitude unset",
-                 "[parser][malformed]")
+                 "[parser][malformed][PATH-E-e01]")
 {
     // strtoll parsed a numeric prefix and returned 0 for anything else, so
     // "garbage" and "1200x" both became a "valid" 0 ft. A leading '+' is also
@@ -418,7 +420,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 3 garbage or trailing-junk altitude le
 }
 
 TEST_CASE_METHOD(ParserFixture, "MSG type 3 altitude too large even for long long still clamps to UINT32_MAX",
-                 "[parser][clamp]")
+                 "[parser][clamp][PATH-E-e01]")
 {
     feed(makeMsg("3", "A12345", "", "999999999999999999999999999999"));
     REQUIRE(g_call_count == 1);
@@ -427,7 +429,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 3 altitude too large even for long lon
 }
 
 TEST_CASE_METHOD(ParserFixture, "MSG type 3 altitude too negative even for long long still clamps to 0",
-                 "[parser][clamp]")
+                 "[parser][clamp][PATH-E-e01]")
 {
     feed(makeMsg("3", "A12345", "", "-999999999999999999999999999999"));
     REQUIRE(g_call_count == 1);
@@ -436,7 +438,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 3 altitude too negative even for long 
 }
 
 TEST_CASE_METHOD(ParserFixture, "MSG type 4 garbage or trailing-junk vert rate leaves vert rate unset",
-                 "[parser][malformed]")
+                 "[parser][malformed][PATH-E-e01]")
 {
     for (const char *vertrate : {"garbage", "1024x", "12.5"})
     {
@@ -449,7 +451,8 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 4 garbage or trailing-junk vert rate l
     }
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG type 4 vert rate too extreme even for long still clamps", "[parser][clamp]")
+TEST_CASE_METHOD(ParserFixture, "MSG type 4 vert rate too extreme even for long still clamps",
+                 "[parser][clamp][PATH-E-e01]")
 {
     feed(makeMsg("4", "A12345", "", "", "0", "0", "", "", "999999999999999999999999999999"));
     REQUIRE(g_call_count == 1);
@@ -457,7 +460,8 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 4 vert rate too extreme even for long 
     CHECK(g_captured->getVertVel() == INT16_MAX);
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG type 6 garbage or negative squawk leaves squawk unset", "[parser][malformed]")
+TEST_CASE_METHOD(ParserFixture, "MSG type 6 garbage or negative squawk leaves squawk unset",
+                 "[parser][malformed][PATH-E-e01]")
 {
     // strtoul wrapped a negative string into a huge unsigned value that then
     // clamped down to a plausible-looking UINT16_MAX; from_chars into an
@@ -474,7 +478,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 6 garbage or negative squawk leaves sq
 }
 
 TEST_CASE_METHOD(ParserFixture, "MSG type 6 squawk too large even for unsigned long still clamps to UINT16_MAX",
-                 "[parser][clamp]")
+                 "[parser][clamp][PATH-E-e01]")
 {
     feed(makeMsg("6", "A12345", "", "", "", "", "", "", "", "999999999999999999999999999999"));
     REQUIRE(g_call_count == 1);
@@ -486,7 +490,7 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 6 squawk too large even for unsigned l
 // Empty optional fields
 // ---------------------------------------------------------------------------
 
-TEST_CASE_METHOD(ParserFixture, "Empty callsign on type 1 still fires callback", "[parser][empty]")
+TEST_CASE_METHOD(ParserFixture, "Empty callsign on type 1 still fires callback", "[parser][empty][PATH-E-e01]")
 {
     feed(makeMsg("1", "A12345", ""));
     REQUIRE(g_call_count == 1);
@@ -494,7 +498,8 @@ TEST_CASE_METHOD(ParserFixture, "Empty callsign on type 1 still fires callback",
     CHECK(g_captured->getCallsign().empty());
 }
 
-TEST_CASE_METHOD(ParserFixture, "Empty numeric fields on type 3 parse as zero without throwing", "[parser][empty]")
+TEST_CASE_METHOD(ParserFixture, "Empty numeric fields on type 3 parse as zero without throwing",
+                 "[parser][empty][PATH-E-e01]")
 {
     feed(makeMsg("3", "A12345", "", "", "", "", "", ""));
     REQUIRE(g_call_count == 1);
@@ -506,7 +511,8 @@ TEST_CASE_METHOD(ParserFixture, "Empty numeric fields on type 3 parse as zero wi
     CHECK_FALSE(p.getValid());
 }
 
-TEST_CASE_METHOD(ParserFixture, "Type 3 with empty lat/lng but valid altitude leaves position unset", "[parser][empty]")
+TEST_CASE_METHOD(ParserFixture, "Type 3 with empty lat/lng but valid altitude leaves position unset",
+                 "[parser][empty][PATH-E-e01]")
 {
     feed(makeMsg("3", "A12345", "", "35000", "", "", "", ""));
     REQUIRE(g_call_count == 1);
@@ -515,7 +521,8 @@ TEST_CASE_METHOD(ParserFixture, "Type 3 with empty lat/lng but valid altitude le
     CHECK_FALSE(g_captured->getPosition().getValid());
 }
 
-TEST_CASE_METHOD(ParserFixture, "Type 4 with empty velocity fields leaves them all unset", "[parser][empty]")
+TEST_CASE_METHOD(ParserFixture, "Type 4 with empty velocity fields leaves them all unset",
+                 "[parser][empty][PATH-E-e01]")
 {
     // Same class of bug as the empty altitude: an empty groundspeed/track/
     // vertrate field parses to 0 and must not become a "valid" speed of 0 kt
@@ -527,7 +534,7 @@ TEST_CASE_METHOD(ParserFixture, "Type 4 with empty velocity fields leaves them a
     CHECK_FALSE(g_captured->validVertVel());
 }
 
-TEST_CASE_METHOD(ParserFixture, "Type 6 with an empty squawk field leaves squawk unset", "[parser][empty]")
+TEST_CASE_METHOD(ParserFixture, "Type 6 with an empty squawk field leaves squawk unset", "[parser][empty][PATH-E-e01]")
 {
     feed(makeMsg("6", "A12345"));
     REQUIRE(g_call_count == 1);
@@ -538,7 +545,7 @@ TEST_CASE_METHOD(ParserFixture, "Type 6 with an empty squawk field leaves squawk
 // Garbage coordinates
 // ---------------------------------------------------------------------------
 
-TEST_CASE_METHOD(ParserFixture, "Type 3 unparseable coordinates leave position unset", "[parser][coords]")
+TEST_CASE_METHOD(ParserFixture, "Type 3 unparseable coordinates leave position unset", "[parser][coords][PATH-E-e01]")
 {
     // strtod parsed each of these to 0.0 (or a nonsense prefix) and the
     // position was marked valid, placing the aircraft at or near Null Island.
@@ -560,7 +567,7 @@ TEST_CASE_METHOD(ParserFixture, "Type 3 unparseable coordinates leave position u
     }
 }
 
-TEST_CASE_METHOD(ParserFixture, "Type 3 out-of-range coordinates leave position unset", "[parser][coords]")
+TEST_CASE_METHOD(ParserFixture, "Type 3 out-of-range coordinates leave position unset", "[parser][coords][PATH-E-e01]")
 {
     const std::pair<const char *, const char *> cases[] = {
         {"90.001", "0"},
@@ -579,7 +586,7 @@ TEST_CASE_METHOD(ParserFixture, "Type 3 out-of-range coordinates leave position 
     }
 }
 
-TEST_CASE_METHOD(ParserFixture, "Type 3 boundary coordinates are accepted", "[parser][coords]")
+TEST_CASE_METHOD(ParserFixture, "Type 3 boundary coordinates are accepted", "[parser][coords][PATH-E-e01]")
 {
     feed(makeMsg("3", "A12345", "", "", "", "", "-90", "180"));
     REQUIRE(g_call_count == 1);
@@ -589,7 +596,8 @@ TEST_CASE_METHOD(ParserFixture, "Type 3 boundary coordinates are accepted", "[pa
     CHECK(p.getLongitude() == Approx(180.0));
 }
 
-TEST_CASE_METHOD(ParserFixture, "Type 3 garbage coordinates do not discard a usable altitude", "[parser][coords]")
+TEST_CASE_METHOD(ParserFixture, "Type 3 garbage coordinates do not discard a usable altitude",
+                 "[parser][coords][PATH-E-e01]")
 {
     feed(makeMsg("3", "A12345", "", "35000", "", "", "not-a-lat", "174.7633"));
     REQUIRE(g_call_count == 1);
@@ -602,7 +610,7 @@ TEST_CASE_METHOD(ParserFixture, "Type 3 garbage coordinates do not discard a usa
 // Receive-time stamping
 // ---------------------------------------------------------------------------
 
-TEST_CASE_METHOD(ParserFixture, "Parsed messages carry the receive-time stamp", "[parser][timestamp]")
+TEST_CASE_METHOD(ParserFixture, "Parsed messages carry the receive-time stamp", "[parser][timestamp][PATH-E-e01]")
 {
     // The report's timestamp/tslc are derived from this stamp at send time;
     // it must be the recv() time handed in, not something processMessage
@@ -616,7 +624,7 @@ TEST_CASE_METHOD(ParserFixture, "Parsed messages carry the receive-time stamp", 
 // Garbage ICAO address
 // ---------------------------------------------------------------------------
 
-TEST_CASE_METHOD(ParserFixture, "Bad ICAO address field: callback never fires", "[parser][address]")
+TEST_CASE_METHOD(ParserFixture, "Bad ICAO address field: callback never fires", "[parser][address][PATH-E-e01]")
 {
     // strtoul parsed each of these to 0, collapsing unrelated garbage messages
     // into one phantom aircraft 0x000000 that was reported to FSS.
@@ -629,7 +637,7 @@ TEST_CASE_METHOD(ParserFixture, "Bad ICAO address field: callback never fires", 
     }
 }
 
-TEST_CASE_METHOD(ParserFixture, "Lowercase hex ICAO address is accepted", "[parser][address]")
+TEST_CASE_METHOD(ParserFixture, "Lowercase hex ICAO address is accepted", "[parser][address][PATH-E-e01]")
 {
     feed(makeMsg("1", "abc123", "QFA123"));
     REQUIRE(g_call_count == 1);
@@ -640,13 +648,13 @@ TEST_CASE_METHOD(ParserFixture, "Lowercase hex ICAO address is accepted", "[pars
 // Truncated / malformed messages
 // ---------------------------------------------------------------------------
 
-TEST_CASE_METHOD(ParserFixture, "Too few fields: callback never fires", "[parser][malformed]")
+TEST_CASE_METHOD(ParserFixture, "Too few fields: callback never fires", "[parser][malformed][PATH-E-e01]")
 {
     feed("MSG,3,111,11111,A12345,111111,2024/01/01");
     CHECK(g_call_count == 0);
 }
 
-TEST_CASE_METHOD(ParserFixture, "Exactly 18 fields satisfies the size guard", "[parser][malformed]")
+TEST_CASE_METHOD(ParserFixture, "Exactly 18 fields satisfies the size guard", "[parser][malformed][PATH-E-e01]")
 {
     // data.size() must be > sbs1_field_squawk (17), i.e. >= 18.
     feed("MSG,6,111,11111,A12345,111111,d,t,d,t,,,,,,,,7700");
@@ -654,13 +662,13 @@ TEST_CASE_METHOD(ParserFixture, "Exactly 18 fields satisfies the size guard", "[
     CHECK(g_captured->getSquawk() == 7700);
 }
 
-TEST_CASE_METHOD(ParserFixture, "Empty string: no callback", "[parser][malformed]")
+TEST_CASE_METHOD(ParserFixture, "Empty string: no callback", "[parser][malformed][PATH-E-e01]")
 {
     feed("");
     CHECK(g_call_count == 0);
 }
 
-TEST_CASE_METHOD(ParserFixture, "Non-MSG record type is silently ignored", "[parser][malformed]")
+TEST_CASE_METHOD(ParserFixture, "Non-MSG record type is silently ignored", "[parser][malformed][PATH-E-e01]")
 {
     std::string sel = makeMsg("1", "A12345", "QFA123");
     sel.replace(0, 3, "SEL");
@@ -673,13 +681,14 @@ TEST_CASE_METHOD(ParserFixture, "Non-MSG record type is silently ignored", "[par
 // ---------------------------------------------------------------------------
 
 TEST_CASE_METHOD(ParserFixture, "Unknown transmission type: no callback (default branch returns early)",
-                 "[parser][unknown]")
+                 "[parser][unknown][PATH-E-e01]")
 {
     feed(makeMsg("99", "A12345"));
     CHECK(g_call_count == 0);
 }
 
-TEST_CASE_METHOD(ParserFixture, "Non-numeric transmission type treated as type 0 (unknown)", "[parser][unknown]")
+TEST_CASE_METHOD(ParserFixture, "Non-numeric transmission type treated as type 0 (unknown)",
+                 "[parser][unknown][PATH-E-e01]")
 {
     // strtol("X") -> 0, which hits the default branch -> no callback
     feed(makeMsg("X", "A12345"));
@@ -736,7 +745,7 @@ static_assert(adsb_units::deg_to_centideg(270.5) == 27050, "heading conversion m
 // Staleness
 // ---------------------------------------------------------------------------
 
-TEST_CASE("ADSBData::isStale", "[stale]")
+TEST_CASE("ADSBData::isStale", "[stale][PATH-E-e03]")
 {
     constexpr uint64_t window = 600000; // 10 minutes in ms
     ADSBData a(0xABCDEF);
@@ -754,7 +763,7 @@ TEST_CASE("ADSBData::isStale", "[stale]")
 // Record folding and report flags (adsb_report)
 // ---------------------------------------------------------------------------
 
-TEST_CASE("update_record folds only the fields a message carries", "[record]")
+TEST_CASE("update_record folds only the fields a message carries", "[record][TC-ADS-002]")
 {
     ADSBData record(0xABCDEF);
 
@@ -802,7 +811,7 @@ TEST_CASE("update_record folds only the fields a message carries", "[record]")
     CHECK(record.getSquawk() == 1234);
 }
 
-TEST_CASE("update_record keeps a known callsign when the message's is blank", "[record]")
+TEST_CASE("update_record keeps a known callsign when the message's is blank", "[record][TC-ADS-002]")
 {
     ADSBData record(0x1);
     record.setCallsign("KNOWN");
@@ -818,7 +827,7 @@ TEST_CASE("update_record keeps a known callsign when the message's is blank", "[
     CHECK(record.validCallsign());
 }
 
-TEST_CASE("report_flags follows what the record knows", "[record]")
+TEST_CASE("report_flags follows what the record knows", "[record][TC-ADS-002]")
 {
     using namespace adsb_report;
 
@@ -841,7 +850,7 @@ TEST_CASE("report_flags follows what the record knows", "[record]")
                                                       valid_callsign | valid_squawk | valid_vertvel));
 }
 
-TEST_CASE("build_report needs the triggering message to carry a position", "[record]")
+TEST_CASE("build_report needs the triggering message to carry a position", "[record][TC-ADS-002]")
 {
     ADSBData record(0x1);
     record.setAltitude(5000);
@@ -855,7 +864,7 @@ TEST_CASE("build_report needs the triggering message to carry a position", "[rec
     CHECK(adsb_report::build_report(record, with_pos).has_value());
 }
 
-TEST_CASE("build_report sources altitude from the record, not the message", "[record]")
+TEST_CASE("build_report sources altitude from the record, not the message", "[record][TC-ADS-002]")
 {
     // The record holds the last-known altitude; the triggering message carries
     // a different one. The report must use the record's value -- taking it from
@@ -880,7 +889,7 @@ TEST_CASE("build_report sources altitude from the record, not the message", "[re
     CHECK(report2->altitude == 5000);
 }
 
-TEST_CASE("build_report maps every field and converts units from the record", "[record]")
+TEST_CASE("build_report maps every field and converts units from the record", "[record][TC-ADS-002]")
 {
     ADSBData record(0xABCDEF);
     record.setAltitude(5000);
@@ -913,7 +922,7 @@ TEST_CASE("build_report maps every field and converts units from the record", "[
 // Per-field freshness expiry
 // ---------------------------------------------------------------------------
 
-TEST_CASE("report_flags keeps a fresh motion field valid", "[record][freshness]")
+TEST_CASE("report_flags keeps a fresh motion field valid", "[record][freshness][TC-ADS-002]")
 {
     using namespace adsb_report;
     ADSBData record(0x1);
@@ -923,7 +932,7 @@ TEST_CASE("report_flags keeps a fresh motion field valid", "[record][freshness]"
     CHECK((report_flags(record, 1000 + motion_freshness_ms - 1) & valid_altitude) != 0); // not quite expired
 }
 
-TEST_CASE("report_flags clears a motion field once its window expires", "[record][freshness]")
+TEST_CASE("report_flags clears a motion field once its window expires", "[record][freshness][TC-ADS-002]")
 {
     using namespace adsb_report;
     ADSBData record(0x1);
@@ -936,7 +945,7 @@ TEST_CASE("report_flags clears a motion field once its window expires", "[record
     CHECK(record.getHeading() == 90);
 }
 
-TEST_CASE("identity fields stay valid long after motion fields have expired", "[record][freshness]")
+TEST_CASE("identity fields stay valid long after motion fields have expired", "[record][freshness][TC-ADS-002]")
 {
     using namespace adsb_report;
     ADSBData record(0x1);
@@ -965,7 +974,7 @@ TEST_CASE("identity fields stay valid long after motion fields have expired", "[
     CHECK((later_flags & valid_squawk) == 0);
 }
 
-TEST_CASE("a newly received field is immediately valid again after expiring", "[record][freshness]")
+TEST_CASE("a newly received field is immediately valid again after expiring", "[record][freshness][TC-ADS-002]")
 {
     using namespace adsb_report;
     ADSBData record(0x1);
@@ -983,7 +992,8 @@ TEST_CASE("a newly received field is immediately valid again after expiring", "[
     CHECK((report_flags(record, 1000 + motion_freshness_ms) & valid_speed) != 0);
 }
 
-TEST_CASE("build_report reports a current position alongside expired velocity as such", "[record][freshness]")
+TEST_CASE("build_report reports a current position alongside expired velocity as such",
+          "[record][freshness][TC-ADS-002]")
 {
     using namespace adsb_report;
     ADSBData record(0x1);
@@ -1001,7 +1011,7 @@ TEST_CASE("build_report reports a current position alongside expired velocity as
     CHECK((report->flags & valid_speed) == 0);
 }
 
-TEST_CASE("aircraft-level eviction is independent of per-field expiry", "[record][freshness]")
+TEST_CASE("aircraft-level eviction is independent of per-field expiry", "[record][freshness][TC-ADS-002]")
 {
     // last_seen tracks whether the aircraft is heard from at all; a field
     // observed long ago must not make isStale() see the whole record as stale
@@ -1014,7 +1024,7 @@ TEST_CASE("aircraft-level eviction is independent of per-field expiry", "[record
     CHECK_FALSE(record.isStale(1000 + adsb_report::motion_freshness_ms + 1, window));
 }
 
-TEST_CASE("derive_tslc reflects receive time, not send time", "[record]")
+TEST_CASE("derive_tslc reflects receive time, not send time", "[record][TC-ADS-002]")
 {
     using adsb_report::derive_tslc;
 

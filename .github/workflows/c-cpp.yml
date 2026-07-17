@@ -89,6 +89,16 @@ jobs:
     - name: make check (TSan)
       run: make check
 
+    - name: collect Catch2 traceability
+      run: python3 tools/collect_catch2_traceability.py
+
+    - name: Upload Catch2 traceability artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: catch2-traceability
+        path: src/catch2-traceability.json
+        retention-days: 14
+
   # ─── 4. AddressSanitizer + UndefinedBehaviorSanitizer ─────────────────────
   # -Wno-maybe-uninitialized suppresses a GCC false-positive in <regex> /
   # std::function (pulled in by catch.hpp) at -O1 on GCC 16+. Leak detection is
