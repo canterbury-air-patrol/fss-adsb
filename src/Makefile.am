@@ -11,7 +11,7 @@ AM_CXXFLAGS+= -pthread -Wno-address-of-packed-member
 # here (-Wextra -Wduplicated-cond -Wmisleading-indentation -Wlogical-op) stay.
 AM_CXXFLAGS+= -Werror -Wall -Wextra -Wshadow -Wunused -Wnull-dereference -Wnon-virtual-dtor -Woverloaded-virtual -Wduplicated-cond -Wmisleading-indentation -Wlogical-op -Wformat=2 -pedantic -Wpedantic -Weffc++
 
-fss_adsb_SOURCES = main.cpp dump1090.cpp dump1090.hpp fss-reporter.cpp fss-reporter.hpp aircraft_reporter.hpp report_queue.cpp report_queue.hpp reporting_worker.cpp reporting_worker.hpp adsb_record.hpp units.hpp args.hpp point.hpp
+fss_adsb_SOURCES = main.cpp dump1090.cpp dump1090.hpp fss-reporter.cpp fss-reporter.hpp aircraft_reporter.hpp aircraft_registry.cpp aircraft_registry.hpp report_queue.cpp report_queue.hpp reporting_worker.cpp reporting_worker.hpp shutdown_signal.cpp shutdown_signal.hpp adsb_record.hpp units.hpp args.hpp point.hpp
 
 fss_adsb_CXXFLAGS = $(AM_CXXFLAGS) $(FSS_CLIENT_SSL_CFLAGS) $(FSS_TRANSPORT_CFLAGS)
 fss_adsb_LDFLAGS = $(FSS_RPATH)
@@ -25,12 +25,12 @@ TESTS = test_dump1090
 # falls back to the vendored Catch2 v2 header + test_main.cpp otherwise -- see
 # the configure.ac comment for why both paths still exist.
 if HAVE_CATCH2_V3
-test_dump1090_SOURCES = test/test_dump1090.cpp dump1090.cpp report_queue.cpp reporting_worker.cpp
+test_dump1090_SOURCES = test/test_dump1090.cpp dump1090.cpp report_queue.cpp reporting_worker.cpp aircraft_registry.cpp shutdown_signal.cpp
 test_dump1090_CPPFLAGS = -DFSS_ADSB_TESTING -DFSS_ADSB_CATCH2_V3 -I$(srcdir)/test
 test_dump1090_CXXFLAGS = $(AM_CXXFLAGS) -Wno-effc++ -Wno-shadow $(CATCH2_CFLAGS) $(FSS_CLIENT_SSL_CFLAGS) $(FSS_TRANSPORT_CFLAGS)
 test_dump1090_LDADD = $(CATCH2_LIBS) $(FSS_CLIENT_SSL_LIBS) $(FSS_TRANSPORT_LIBS)
 else
-test_dump1090_SOURCES = test/test_main.cpp test/test_dump1090.cpp dump1090.cpp report_queue.cpp reporting_worker.cpp
+test_dump1090_SOURCES = test/test_main.cpp test/test_dump1090.cpp dump1090.cpp report_queue.cpp reporting_worker.cpp aircraft_registry.cpp shutdown_signal.cpp
 test_dump1090_CPPFLAGS = -DFSS_ADSB_TESTING -I$(srcdir)/test
 test_dump1090_CXXFLAGS = $(AM_CXXFLAGS) -Wno-effc++ -Wno-shadow $(FSS_CLIENT_SSL_CFLAGS) $(FSS_TRANSPORT_CFLAGS)
 test_dump1090_LDADD = $(FSS_CLIENT_SSL_LIBS) $(FSS_TRANSPORT_LIBS)

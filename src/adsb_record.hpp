@@ -9,10 +9,10 @@
 #include "point.hpp"
 #include "units.hpp"
 
-/* Pure decision logic shared by main.cpp's handle_adsb_data() and its tests:
+/* Pure decision logic shared by aircraft_registry::fold() and its tests:
  * folding a freshly-parsed message into the accumulated per-aircraft record,
  * and turning what that record knows into a position-report flags word. Kept
- * header-only and free of the file-scope globals (known_aircraft, fss) so it
+ * header-only and free of file-scope globals (aircraft_registry, fss) so it
  * can be exercised in isolation. */
 namespace adsb_report {
 
