@@ -26,6 +26,7 @@ src/test_dump1090
 src/test-suite.log
 src/*.log
 src/*.trs
+src/catch2-traceability.json
 
 # Clang tooling
 clang-tidy.log
