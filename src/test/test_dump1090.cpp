@@ -13,6 +13,7 @@ using Catch::Approx;
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <csignal>
 #include <cstring>
 #include <mutex>
 #include <optional>
@@ -28,11 +29,13 @@ using Catch::Approx;
 #include <unistd.h>
 
 #include "../adsb_record.hpp"
+#include "../aircraft_registry.hpp"
 #include "../aircraft_reporter.hpp"
 #include "../args.hpp"
 #include "../dump1090.hpp"
 #include "../report_queue.hpp"
 #include "../reporting_worker.hpp"
+#include "../shutdown_signal.hpp"
 #include "../units.hpp"
 
 // adsb_cb is a plain C function pointer (void(*)(const ADSBData&)) so it cannot carry
@@ -1027,6 +1030,186 @@ TEST_CASE("derive_tslc reflects receive time, not send time", "[record]")
     CHECK(derive_tslc(1000000, 1000000 + 3600 * 1000) == 255);
     // A backwards clock step (NTP) must not underflow to 255.
     CHECK(derive_tslc(1000000, 999000) == 0);
+}
+
+// ---------------------------------------------------------------------------
+// aircraft_registry — see todo/reporting-and-orchestration-tests.md. Covers
+// the fold-a-message-into-state and evict-the-stale operations that used to
+// live as main.cpp globals (known_aircraft/known_aircraft_lock) and so could
+// not be exercised without a running process.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("aircraft_registry::fold creates a record on first sight and returns nullopt without a position",
+          "[registry]")
+{
+    aircraft_registry reg;
+    ADSBData msg(0xABCDEF);
+    msg.setAltitude(3500);
+    msg.setLastSeen(1000);
+
+    CHECK_FALSE(reg.fold(msg).has_value());
+    CHECK(reg.size() == 1);
+}
+
+TEST_CASE("aircraft_registry::fold returns a report once a position arrives, carrying accumulated fields", "[registry]")
+{
+    aircraft_registry reg;
+
+    ADSBData altitude_only(0xABCDEF);
+    altitude_only.setAltitude(3500, 1000);
+    altitude_only.setLastSeen(1000);
+    CHECK_FALSE(reg.fold(altitude_only).has_value());
+
+    ADSBData with_position(0xABCDEF);
+    with_position.setPosition(Point(-36.8485, 174.7633));
+    with_position.setLastSeen(2000);
+    auto report = reg.fold(with_position);
+
+    // Altitude comes from the accumulated record (the earlier fold), not the
+    // triggering message (which carried none) -- the same contract
+    // adsb_report::build_report enforces directly, exercised here through
+    // the registry that main.cpp actually calls.
+    REQUIRE(report.has_value());
+    CHECK(report->icao_address == 0xABCDEF);
+    CHECK(report->altitude == 3500);
+    CHECK(report->position.getValid());
+}
+
+TEST_CASE("aircraft_registry::fold coalesces repeated messages for the same ICAO into one record", "[registry]")
+{
+    aircraft_registry reg;
+    ADSBData first(0x1);
+    first.setCallsign("QFA123");
+    first.setLastSeen(1000);
+    reg.fold(first);
+
+    ADSBData second(0x1);
+    second.setAltitude(4000);
+    second.setLastSeen(2000);
+    reg.fold(second);
+
+    CHECK(reg.size() == 1);
+
+    ADSBData with_position(0x1);
+    with_position.setPosition(Point(1.0, 2.0));
+    with_position.setLastSeen(3000);
+    auto report = reg.fold(with_position);
+
+    REQUIRE(report.has_value());
+    CHECK(report->callsign == "QFA123");
+    CHECK(report->altitude == 4000);
+}
+
+TEST_CASE("aircraft_registry::size counts distinct aircraft, not messages", "[registry]")
+{
+    aircraft_registry reg;
+    ADSBData first(0x1);
+    first.setLastSeen(1000);
+    ADSBData second(0x1);
+    second.setLastSeen(2000);
+    ADSBData other(0x2);
+    other.setLastSeen(1000);
+
+    reg.fold(first);
+    CHECK(reg.size() == 1);
+    reg.fold(second);
+    CHECK(reg.size() == 1); // same ICAO: still one record
+    reg.fold(other);
+    CHECK(reg.size() == 2);
+}
+
+TEST_CASE("aircraft_registry::evict_stale removes only aircraft past the window and returns their addresses",
+          "[registry]")
+{
+    aircraft_registry reg;
+
+    ADSBData old_aircraft(0x1);
+    old_aircraft.setLastSeen(1000);
+    reg.fold(old_aircraft);
+
+    ADSBData fresh_aircraft(0x2);
+    fresh_aircraft.setLastSeen(9000);
+    reg.fold(fresh_aircraft);
+
+    constexpr uint64_t window = 5000;
+    auto evicted = reg.evict_stale(9000, window);
+
+    REQUIRE(evicted.size() == 1);
+    CHECK(evicted[0] == 0x1);
+    CHECK(reg.size() == 1);
+}
+
+TEST_CASE("aircraft_registry::evict_stale evicts nothing when no aircraft has expired", "[registry]")
+{
+    aircraft_registry reg;
+    ADSBData aircraft(0x1);
+    aircraft.setLastSeen(1000);
+    reg.fold(aircraft);
+
+    auto evicted = reg.evict_stale(1000, 5000);
+    CHECK(evicted.empty());
+    CHECK(reg.size() == 1);
+}
+
+TEST_CASE("aircraft_registry::fold surfaces an expired accumulated field as invalid in the report", "[registry]")
+{
+    // Exercises the interaction between per-field freshness (adsb_report.hpp)
+    // and the fold path end-to-end through the registry main.cpp actually
+    // calls, not just adsb_report::report_flags() directly.
+    aircraft_registry reg;
+
+    ADSBData heading_msg(0x1);
+    heading_msg.setHeading(90, 1000);
+    heading_msg.setLastSeen(1000);
+    reg.fold(heading_msg);
+
+    ADSBData position_msg(0x1);
+    position_msg.setPosition(Point(1.0, 2.0));
+    position_msg.setLastSeen(1000 + adsb_report::motion_freshness_ms); // heading now expired
+    auto report = reg.fold(position_msg);
+
+    REQUIRE(report.has_value());
+    CHECK((report->flags & adsb_report::valid_heading) == 0);
+    CHECK(report->position.getValid());
+}
+
+// ---------------------------------------------------------------------------
+// Signal-driven shutdown — see todo/reporting-and-orchestration-tests.md.
+// sigIntHandler/running were extracted out of main.cpp (which is not linked
+// into this binary, since it defines its own main()) into shutdown_signal.cpp
+// specifically so they are reachable here.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("sigIntHandler clears the running flag", "[shutdown]")
+{
+    running = 1;
+    sigIntHandler(SIGINT);
+    CHECK(running == 0);
+
+    running = 1;
+    sigIntHandler(SIGTERM);
+    CHECK(running == 0);
+}
+
+TEST_CASE("raising SIGTERM after registering sigIntHandler clears the running flag", "[shutdown]")
+{
+    // Mirrors main()'s signal(SIGTERM, sigIntHandler) registration and
+    // exercises the real OS signal-delivery path (not just a direct call),
+    // covering systemd's default stop signal alongside SIGINT above.
+    running = 1;
+    struct sigaction old_action{};
+    struct sigaction new_action{};
+    new_action.sa_handler = sigIntHandler;
+    sigemptyset(&new_action.sa_mask);
+    new_action.sa_flags = 0;
+    REQUIRE(sigaction(SIGTERM, &new_action, &old_action) == 0);
+
+    // raise() delivers synchronously to the calling thread, so the handler
+    // has already run by the time raise() returns -- no race to poll for.
+    raise(SIGTERM);
+    CHECK(running == 0);
+
+    sigaction(SIGTERM, &old_action, nullptr);
 }
 
 // ---------------------------------------------------------------------------
