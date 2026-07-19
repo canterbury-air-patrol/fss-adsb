@@ -827,6 +827,32 @@ TEST_CASE("update_record keeps a known callsign when the message's is blank", "[
     CHECK(record.validCallsign());
 }
 
+TEST_CASE("update_record trims SBS-1's trailing space padding from the callsign", "[record][TC-ADS-002]")
+{
+    ADSBData record(0x1);
+    ADSBData msg(0x1);
+    msg.setCallsign("QFA123  ");
+    adsb_report::update_record(record, msg);
+
+    CHECK(record.getCallsign() == "QFA123");
+}
+
+TEST_CASE("update_record keeps a known callsign when the message is all spaces", "[record][TC-ADS-002]")
+{
+    ADSBData record(0x1);
+    record.setCallsign("KNOWN");
+
+    // A callsign field that is present but entirely padding trims to empty
+    // and must not clobber a previously-seen callsign, same as a truly blank
+    // field.
+    ADSBData blank(0x1);
+    blank.setCallsign("        ");
+    adsb_report::update_record(record, blank);
+
+    CHECK(record.getCallsign() == "KNOWN");
+    CHECK(record.validCallsign());
+}
+
 TEST_CASE("report_flags follows what the record knows", "[record][TC-ADS-002]")
 {
     using namespace adsb_report;
