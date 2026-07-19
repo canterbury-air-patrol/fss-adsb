@@ -25,6 +25,7 @@ using Catch::Approx;
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -1521,6 +1522,44 @@ TEST_CASE("dump1090 does not leak a file descriptor per drop/reconnect cycle", "
     }
 
     CHECK(count_open_fds() == baseline);
+
+    dut.disconnect();
+    close(conn);
+    close(listen_fd);
+}
+
+TEST_CASE("dump1090 enables TCP keepalive on a connected socket", "[reconnect]")
+{
+    auto [listen_fd, port] = open_loopback_listener();
+
+    dump1090 dut{"127.0.0.1", port, capture_cb};
+    int conn = accept(listen_fd, nullptr, nullptr);
+    REQUIRE(conn >= 0);
+    REQUIRE(dut.test_isConnected());
+
+    int fd = dut.test_fd();
+
+    // Values pinned to connect_candidate()'s keepalive_idle_s/interval_s/count
+    // constants in dump1090.cpp: 120 + 20 * 3 = 180s worst-case detection.
+    int keepalive = 0;
+    socklen_t len = sizeof(keepalive);
+    REQUIRE(getsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive, &len) == 0);
+    CHECK(keepalive != 0);
+
+    int idle = 0;
+    len = sizeof(idle);
+    REQUIRE(getsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, &len) == 0);
+    CHECK(idle == 120);
+
+    int interval = 0;
+    len = sizeof(interval);
+    REQUIRE(getsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &interval, &len) == 0);
+    CHECK(interval == 20);
+
+    int count = 0;
+    len = sizeof(count);
+    REQUIRE(getsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &count, &len) == 0);
+    CHECK(count == 3);
 
     dut.disconnect();
     close(conn);
