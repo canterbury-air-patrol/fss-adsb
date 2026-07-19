@@ -65,3 +65,26 @@ if [ "$control_versions" != "$configure_min" ]; then
         "but debian/control's versioned dependencies are: $(echo "$control_versions" | tr '\n' ' ')" >&2
     exit 1
 fi
+
+# configure.ac's AC_INIT version feeds PACKAGE_VERSION (autoconf/automake),
+# which is what --version prints (src/main.cpp). debian/changelog's top
+# entry is the version currently being built, released or not: the
+# invariant is that the two always match, so AC_INIT is bumped the moment a
+# new changelog entry is opened rather than waiting for release -- a dev
+# build's --version then always names the version it is becoming. Catch
+# drift between them here rather than at package-build time.
+configure_version="$(sed -n 's/^AC_INIT(\[fss-adsb\], \[\([^]]*\)\].*/\1/p' configure.ac)"
+changelog_version="$(sed -n '1s/^fss-adsb (\([^)]*\)).*/\1/p' debian/changelog)"
+if [ -z "$configure_version" ]; then
+    echo "check-code.sh: could not find AC_INIT's version in configure.ac" >&2
+    exit 1
+fi
+if [ -z "$changelog_version" ]; then
+    echo "check-code.sh: could not find a version on debian/changelog's first line" >&2
+    exit 1
+fi
+if [ "$configure_version" != "$changelog_version" ]; then
+    echo "check-code.sh: configure.ac's AC_INIT version ($configure_version) does not match" \
+        "debian/changelog's top entry ($changelog_version)" >&2
+    exit 1
+fi
