@@ -161,5 +161,8 @@ public:
 #ifdef FSS_ADSB_TESTING
     void test_processMessage(const std::string &msg, uint64_t received = 0) { processMessage(msg, received); }
     auto test_isConnected() -> bool { return this->fd != -1; }
+    /* Connected fd, for getsockopt() readback of the keepalive options set in
+     * connect_candidate(). */
+    auto test_fd() -> int { return this->fd; }
 #endif
 };

@@ -17,6 +17,7 @@
 
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/time.h>
@@ -28,6 +29,17 @@
 #include <fss-log.hpp>
 
 constexpr int buffer_length = 2048;
+
+/* SO_KEEPALIVE probe tuning for the connected dump1090 socket: a dead peer
+ * that never sends RST/FIN (power loss, a NAT/firewall dropping the idle
+ * mapping, a severed link) otherwise leaves the receive thread blocked in
+ * recv() forever, and reconnect() never fires because it only acts once
+ * fd == -1. idle + interval * count is the worst-case time to notice:
+ * 120 + 20 * 3 = 180s, so a dead link is caught in roughly 3 minutes instead
+ * of the kernel's default ~2h11m. */
+constexpr int keepalive_idle_s = 120;
+constexpr int keepalive_interval_s = 20;
+constexpr int keepalive_count = 3;
 
 /* Log component/category for this module. */
 constexpr const char *log_component = "dump1090";
@@ -578,6 +590,20 @@ auto dump1090::connect_candidate(struct sockaddr_storage remote) -> int
                                                                         << " (errno " << err << ")");
         close(new_fd);
         return -1;
+    }
+
+    /* Best-effort: a working connection without keepalive still beats no
+     * connection, so a failure here is logged and the connection kept rather
+     * than discarded. */
+    int keepalive_on = 1;
+    if (setsockopt(new_fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive_on, sizeof(keepalive_on)) != 0 ||
+        setsockopt(new_fd, IPPROTO_TCP, TCP_KEEPIDLE, &keepalive_idle_s, sizeof(keepalive_idle_s)) != 0 ||
+        setsockopt(new_fd, IPPROTO_TCP, TCP_KEEPINTVL, &keepalive_interval_s, sizeof(keepalive_interval_s)) != 0 ||
+        setsockopt(new_fd, IPPROTO_TCP, TCP_KEEPCNT, &keepalive_count, sizeof(keepalive_count)) != 0)
+    {
+        int err = errno;
+        FSS_LOG_WARN(log_component, "Failed to enable TCP keepalive: " << std::system_category().message(err)
+                                                                       << " (errno " << err << ")");
     }
 
     return new_fd;
