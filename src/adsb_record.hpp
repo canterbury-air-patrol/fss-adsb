@@ -16,6 +16,19 @@
  * can be exercised in isolation. */
 namespace adsb_report {
 
+/* SBS-1 callsigns arrive right-padded with spaces to a fixed 8-character
+ * field (e.g. "QFA123  "). That padding is a wire-format artifact, not part
+ * of the callsign: forwarded as-is, it breaks exact-string consumers
+ * downstream -- notably cap-fmu's known_aircraft map, which keys aircraft
+ * identity off this exact string, and the MAVLink ADSB_VEHICLE.callsign
+ * field it populates from it. */
+inline auto trim_trailing_spaces(std::string s) -> std::string
+{
+    const auto end = s.find_last_not_of(' ');
+    s.erase(end == std::string::npos ? 0 : end + 1);
+    return s;
+}
+
 /* Bits of the fss_message_position_report flags word. */
 constexpr uint16_t valid_coords = 1;
 constexpr uint16_t valid_altitude = 2;
@@ -36,9 +49,13 @@ constexpr uint16_t valid_vertvel = 128;
  * clock and stays with the caller. */
 inline void update_record(ADSBData &record, const ADSBData &msg)
 {
-    if (msg.validCallsign() && msg.getCallsign() != "")
+    if (msg.validCallsign())
     {
-        record.setCallsign(msg.getCallsign(), msg.getCallsignTime());
+        std::string trimmed = trim_trailing_spaces(msg.getCallsign());
+        if (!trimmed.empty())
+        {
+            record.setCallsign(std::move(trimmed), msg.getCallsignTime());
+        }
     }
     if (msg.validAltitude())
     {
