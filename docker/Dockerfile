@@ -46,11 +46,24 @@ COPY docker/entrypoint.sh /usr/local/bin/fss-adsb-entrypoint.sh
 # fss-adsb parses attacker-reachable RF-derived data (unauthenticated ADS-B
 # over dump1090's SBS-1 feed) while holding FSS client TLS private keys, so
 # the container must not run it as root. --system/--no-create-home matches
-# the dedicated user the Debian package creates in debian/postinst. The
-# /certs volume mounted at run time (see entrypoint.sh) must be readable by
-# this user -- e.g. its files owned by (or world/group readable to) the
-# fss-adsb UID/GID, or bind-mounted with matching ownership from the host.
-RUN adduser --system --no-create-home --disabled-login --group fss-adsb
+# the dedicated user the Debian package creates in debian/postinst.
+#
+# UID/GID 963 must stay identical to debian/postinst's addgroup/adduser
+# calls -- the number is arbitrary but only useful if it agrees between
+# the two files, so an operator bind-mounting the same /certs directory
+# into a systemd-run instance and a container gets consistent ownership on
+# both sides. This image's filesystem is rebuilt fresh from scratch every
+# time, so (unlike the Debian package, installed onto a host that may
+# already have other packages claiming system ids) collision risk here is
+# low; if 963 is ever taken, addgroup/adduser below fails the build loudly
+# rather than silently picking a different id.
+#
+# The /certs volume mounted at run time (see entrypoint.sh) must be
+# readable by this user -- e.g. its files owned by (or world/group
+# readable to) the fss-adsb UID/GID, or bind-mounted with matching
+# ownership from the host.
+RUN addgroup --system --gid 963 fss-adsb && \
+    adduser --system --uid 963 --ingroup fss-adsb --no-create-home --disabled-login fss-adsb
 USER fss-adsb
 
 ENTRYPOINT ["/usr/local/bin/fss-adsb-entrypoint.sh"]

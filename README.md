@@ -42,6 +42,42 @@ user rather than root, so the CA/client certificate files it reads must be
 readable by that user (see the ownership/mode notes in
 `fss-adsb.conf.example`).
 
+### Running under Docker
+Images are published as `canterburyairpatrol/fss-adsb`, tagged per distro
+(e.g. `:latest-trixie`, `:latest-resolute` -- see `docker/Dockerfile` and
+`.github/workflows/docker-build.yml` for the full tag scheme).
+
+The container takes its configuration from the environment rather than
+command-line args (see `docker/entrypoint.sh`):
+- `NAME` -- selects which certificate pair to load from `/certs`
+- `DUMP1090_HOST` / `DUMP1090_PORT` -- dump1090's SBS-1 BaseStation feed
+- `FSS_HOST` / `FSS_PORT` -- the FSS server to report to
+
+Certificates come from a `/certs` volume containing `ca.public.pem`,
+`${NAME}.private.pem`, and `${NAME}.public.pem`.
+
+fss-adsb only reads certs and does network I/O -- it writes nothing to
+disk at runtime -- so the container can run hardened, with a read-only
+root filesystem and no capabilities:
+```
+docker run --rm \
+    --read-only \
+    --cap-drop=ALL \
+    --security-opt=no-new-privileges:true \
+    -e NAME=myserver \
+    -e DUMP1090_HOST=localhost -e DUMP1090_PORT=30003 \
+    -e FSS_HOST=fss-server -e FSS_PORT=20202 \
+    -v /path/to/certs:/certs:ro \
+    canterburyairpatrol/fss-adsb:latest-trixie
+```
+`--read-only` is safe here specifically because fss-adsb never writes to
+disk at runtime.
+
+If you're preparing a host `/certs` directory to share between a systemd
+deployment and a container, note that both pin the same fss-adsb UID/GID
+(see debian/postinst and docker/Dockerfile) so ownership carries over
+unchanged.
+
 ## Redundancy
 fss-adsb is not sent the server configuration messages that normal clients get (and does not act on them), so it will only connect to the server it was told about when it started.
 

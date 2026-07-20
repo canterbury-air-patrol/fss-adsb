@@ -7,8 +7,20 @@ set -e
 # the TLS private-key files are persistent and need a stable owner) -- see
 # fss-adsb@.service's [Service] hardening and debian/fss-adsb.conf.example
 # for the certificate ownership this user needs.
+#
+# UID/GID 963 is pinned explicitly rather than left to adduser's free-id
+# pick, and must stay identical to docker/Dockerfile's addgroup/adduser
+# calls: an operator bind-mounting the same /certs directory into both a
+# systemd-run instance and a container needs matching ownership on both
+# sides. The number itself is arbitrary (just clear of this distro's
+# default system-id allocations) -- only the "same in both files" part
+# matters. Risk: 963 could already be taken by another package on some
+# target system, in which case addgroup/adduser below fails loudly at
+# install time rather than silently reusing the wrong id.
 if [ "$1" = "configure" ]; then
-    adduser --system --group --quiet --no-create-home --home /nonexistent fss-adsb
+    addgroup --system --gid 963 --quiet fss-adsb
+    adduser --system --uid 963 --ingroup fss-adsb --quiet \
+        --no-create-home --home /nonexistent fss-adsb
 fi
 
 #DEBHELPER#

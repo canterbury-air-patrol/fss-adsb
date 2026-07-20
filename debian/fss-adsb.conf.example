@@ -27,6 +27,11 @@ FSS_PORT=20202
 #   chmod 640 ca.public.pem client.private.pem client.public.pem
 # client.private.pem in particular must never be world-readable (mode 640,
 # group fss-adsb) since it is the client's TLS private key.
+#
+# fss-adsb's UID/GID is pinned to 963 in both debian/postinst and
+# docker/Dockerfile, so a /certs directory prepared with `chown fss-adsb`
+# (or `chown 963`) on one host is portable as-is to a container deployment
+# sharing the same directory -- no need to reconcile two different ids.
 CA_PUBLIC_KEY=/etc/fss-adsb/ca.public.pem
 PRIVATE_KEY=/etc/fss-adsb/client.private.pem
 PUBLIC_KEY=/etc/fss-adsb/client.public.pem
