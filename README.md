@@ -37,6 +37,11 @@ systemctl enable --now fss-adsb@<instance>
 ```
 Run one instance per fss-server (see Redundancy below).
 
+The service is sandboxed and runs as a dedicated, unprivileged `fss-adsb`
+user rather than root, so the CA/client certificate files it reads must be
+readable by that user (see the ownership/mode notes in
+`fss-adsb.conf.example`).
+
 ## Redundancy
 fss-adsb is not sent the server configuration messages that normal clients get (and does not act on them), so it will only connect to the server it was told about when it started.
 

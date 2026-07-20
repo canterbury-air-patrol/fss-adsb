@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+
+# fss-adsb parses attacker-reachable RF-derived data (SBS-1 lines relayed
+# from dump1090) while holding FSS client TLS private keys, so it must not
+# run as root. A dedicated system user owns nothing dynamic (no DynamicUser:
+# the TLS private-key files are persistent and need a stable owner) -- see
+# fss-adsb@.service's [Service] hardening and debian/fss-adsb.conf.example
+# for the certificate ownership this user needs.
+if [ "$1" = "configure" ]; then
+    adduser --system --group --quiet --no-create-home --home /nonexistent fss-adsb
+fi
+
+#DEBHELPER#
+
+exit 0
