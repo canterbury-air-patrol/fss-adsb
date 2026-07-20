@@ -36,7 +36,11 @@ FROM ${BASE}
 RUN apt update && apt install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=build /etc/apt/sources.list.d/cap.list /etc/apt/sources.list.d/cap.list
 COPY --from=build /etc/apt/trusted.gpg.d/cap.gpg /etc/apt/trusted.gpg.d/cap.gpg
-RUN apt update && apt upgrade -y && apt install -y libfss-client-ssl && rm -rf /var/lib/apt/lists/*
+# adduser is not preinstalled on every base this Dockerfile targets (present
+# on debian:bookworm, absent on debian:trixie and ubuntu:resolute), but
+# addgroup/adduser below need it -- install it explicitly rather than relying
+# on the base image to already have it.
+RUN apt update && apt upgrade -y && apt install -y libfss-client-ssl adduser && rm -rf /var/lib/apt/lists/*
 
 # Same location `make install` used when the image was single-stage, and
 # already on the default PATH the entrypoint's `exec fss-adsb` relies on.
