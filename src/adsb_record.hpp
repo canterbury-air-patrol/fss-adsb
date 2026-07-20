@@ -101,9 +101,11 @@ constexpr uint64_t motion_freshness_ms = UINT64_C(60) * 1000;
 constexpr uint64_t identity_freshness_ms = UINT64_C(5) * 60 * 1000;
 
 /* True if a field last observed at t_observed is no longer fresh as of
- * t_as_of, given a freshness window. Mirrors ADSBData::isStale's guard: a
- * backwards clock step (t_as_of < t_observed) must not underflow the
- * subtraction and expire every field. */
+ * t_as_of, given a freshness window. t_as_of and t_observed are both
+ * adsb_time::monotonic_ms() stamps, so t_as_of < t_observed cannot happen in
+ * production; mirrors ADSBData::isStale's guard, which stays only as cheap
+ * overflow-safety against arbitrary (e.g. test) inputs, not a real
+ * clock-step defence. */
 inline auto field_expired(uint64_t t_as_of, uint64_t t_observed, uint64_t t_window) -> bool
 {
     return t_as_of >= t_observed && (t_as_of - t_observed) >= t_window;
@@ -153,10 +155,12 @@ struct position_report {
 };
 
 /* Time-since-last-contact for the report, in whole seconds, computed at send
- * time from the receive-time stamp. Stamping tslc = 0 at send time reported
- * backed-up positions as "seen 0 seconds ago" however long they had queued.
- * Clamped to the uint8_t wire field; a backwards clock step (NTP) must not
- * underflow to 255. */
+ * time from the receive-time stamp -- both adsb_time::monotonic_ms() values
+ * (see reporting_worker::run), so now < received cannot happen in
+ * production. Stamping tslc = 0 at send time reported backed-up positions as
+ * "seen 0 seconds ago" however long they had queued. Clamped to the uint8_t
+ * wire field; the now <= received guard is cheap overflow-safety for
+ * arbitrary (e.g. test) inputs, not a real clock-step defence. */
 inline auto derive_tslc(uint64_t received, uint64_t now) -> uint8_t
 {
     if (now <= received)
@@ -165,6 +169,20 @@ inline auto derive_tslc(uint64_t received, uint64_t now) -> uint8_t
     }
     constexpr uint64_t ms_per_s = 1000;
     return static_cast<uint8_t>(std::min<uint64_t>((now - received) / ms_per_s, UINT8_MAX));
+}
+
+/* Wall-clock timestamp for the report: now_wall minus how long the item has
+ * been in flight on the monotonic clock. Reconstructing (rather than
+ * stamping wall time at receive) keeps the receive-time honesty for queued
+ * reports while staying immune to wall steps between receive and send -- a
+ * step is corrected out because only the monotonic elapsed rides on the
+ * item. Guards: elapsed is 0 if received_mono > now_mono, and the
+ * subtraction saturates at 0 rather than underflowing now_wall. */
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+inline auto derive_report_timestamp(uint64_t received_mono, uint64_t now_mono, uint64_t now_wall) -> uint64_t
+{
+    uint64_t elapsed = now_mono > received_mono ? now_mono - received_mono : 0;
+    return elapsed <= now_wall ? now_wall - elapsed : 0;
 }
 
 /* Build the position report for an aircraft, or nothing when the triggering

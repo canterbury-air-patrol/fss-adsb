@@ -12,7 +12,6 @@
 #include <string_view>
 #include <unistd.h>
 
-#include "fss.hpp"
 #include <fss-log.hpp>
 
 #include "adsb_record.hpp"
@@ -20,6 +19,7 @@
 #include "args.hpp"
 #include "dump1090.hpp"
 #include "fss-reporter.hpp"
+#include "monotonic_time.hpp"
 #include "report_queue.hpp"
 #include "reporting_worker.hpp"
 #include "shutdown_signal.hpp"
@@ -52,11 +52,13 @@ void handle_adsb_data(const ADSBData &adsb)
     {
         FSS_LOG_DEBUG(log_component, "Queueing report for " << std::uppercase << std::hex << report->icao_address
                                                             << " (" << report->callsign << ")");
-        /* The message carries the timestamp of the recv() that produced it.
-         * Using it for the report (rather than stamping "now" here) keeps
-         * the report honest when the reporting worker's queue backs up: a
-         * position that queued for minutes must not be reported as seen 0
-         * seconds ago, now. */
+        /* The message carries the monotonic recv()-time stamp (see
+         * dump1090::processMessages), not a wall-clock value. Carrying it
+         * through the queue (rather than stamping wall time here) lets both
+         * TSLC and the report's wall-clock timestamp be derived at the
+         * actual send attempt (reporting_worker::run) -- keeping the report
+         * honest when the queue backs up: a position that queued for
+         * minutes must not be reported as seen 0 seconds ago, now. */
         g_report_queue->push(report->icao_address, pending_report{*report, adsb.getLastSeen()});
     }
 }
@@ -64,7 +66,11 @@ void handle_adsb_data(const ADSBData &adsb)
 void evict_stale_aircraft()
 {
     constexpr uint64_t stale_window_ms = UINT64_C(10) * 60 * 1000;
-    uint64_t now = flight_safety_system::fss_current_timestamp();
+    /* Monotonic (adsb_time::monotonic_ms), not fss_current_timestamp() wall
+     * time: last_seen is stamped on the same clock (see
+     * dump1090::processMessages), and an NTP step must not evict every
+     * aircraft in one sweep. */
+    uint64_t now = adsb_time::monotonic_ms();
     for (uint32_t address : g_aircraft_registry.evict_stale(now, stale_window_ms))
     {
         FSS_LOG_INFO(log_component, "Evicting stale aircraft " << std::uppercase << std::hex << address);

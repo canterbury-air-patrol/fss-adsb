@@ -34,6 +34,7 @@ using Catch::Approx;
 #include "../aircraft_reporter.hpp"
 #include "../args.hpp"
 #include "../dump1090.hpp"
+#include "../monotonic_time.hpp"
 #include "../report_queue.hpp"
 #include "../reporting_worker.hpp"
 #include "../shutdown_signal.hpp"
@@ -1069,6 +1070,25 @@ TEST_CASE("derive_tslc reflects receive time, not send time", "[record][TC-ADS-0
     CHECK(derive_tslc(1000000, 999000) == 0);
 }
 
+TEST_CASE("derive_report_timestamp reconstructs wall time from the monotonic elapsed", "[record][TC-ADS-002]")
+{
+    using adsb_report::derive_report_timestamp;
+
+    // Normal case: 90s elapsed on the monotonic clock between receive and
+    // send subtracts 90000 from wall time.
+    CHECK(derive_report_timestamp(1000000, 1090000, 5000000000) == 5000000000 - 90000);
+
+    // received_mono > now_mono cannot happen in production (see
+    // derive_tslc's equivalent guard), but must not underflow the elapsed
+    // subtraction: elapsed clamps to 0, so the reconstructed timestamp is
+    // now_wall itself.
+    CHECK(derive_report_timestamp(1090000, 1000000, 5000000000) == 5000000000);
+
+    // elapsed longer than now_wall saturates the result at 0 rather than
+    // underflowing it.
+    CHECK(derive_report_timestamp(0, 1000000, 500) == 0);
+}
+
 // ---------------------------------------------------------------------------
 // aircraft_registry — see todo/reporting-and-orchestration-tests.md. Covers
 // the fold-a-message-into-state and evict-the-stale operations that used to
@@ -1717,11 +1737,20 @@ TEST_CASE("reporting_worker derives tslc at the send attempt, not at queue time"
     fake_reporter reporter;
     {
         reporting_worker worker(reporter, q);
-        // received == 0 means "epoch": whatever the real clock reads when the
-        // worker actually calls reportAircraft() is necessarily long after
-        // that, so tslc must come out strictly positive -- it cannot have
-        // been stamped once, up front, at queue time.
-        q.push(0x1, make_item(0x1, 0));
+        // received is built comfortably behind adsb_time::monotonic_ms() (not
+        // fss_current_timestamp()'s wall-clock epoch, which no longer applies
+        // now that pending_report::received is a monotonic stamp -- see
+        // reporting_worker::run), guarded the same way derive_tslc/isStale
+        // guard their own subtractions so a low-uptime test host still gets a
+        // stamp in the past rather than an underflowed one. Whatever
+        // monotonic_ms() reads when the worker actually calls
+        // reportAircraft() is necessarily past that, so tslc must come out
+        // strictly positive -- it cannot have been stamped once, up front, at
+        // queue time.
+        constexpr uint64_t comfortably_stale_ms = 24ULL * 60 * 60 * 1000;
+        uint64_t now = adsb_time::monotonic_ms();
+        uint64_t received = now > comfortably_stale_ms ? now - comfortably_stale_ms : 0;
+        q.push(0x1, make_item(0x1, received));
         REQUIRE(wait_for([&] { return reporter.call_count() == 1; }, std::chrono::seconds(2)));
     }
 
