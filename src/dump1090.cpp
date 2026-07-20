@@ -328,9 +328,13 @@ void dump1090::processMessage(const std::string &t_msg, uint64_t t_received)
             return;
         }
         ADSBData adsb(*address);
-        /* Carry the receive-time stamp on the message: the report's timestamp
-         * and tslc must reflect when the data arrived, not when the (possibly
-         * backed-up) send to the FSS server finally happens. */
+        /* Carry the receive-time stamp on the message: freshness, eviction,
+         * TSLC and the reconstructed wire timestamp (see
+         * adsb_report::derive_report_timestamp) must all reflect when the
+         * data arrived, not when the (possibly backed-up) send to the FSS
+         * server finally happens. Monotonic (adsb_time::monotonic_ms, see
+         * processMessages), not wall time -- everything this stamp feeds
+         * from here on is duration math. */
         adsb.setLastSeen(t_received);
         switch (strtol(data[sbs1_field_id].c_str(), nullptr, sbs1_id_base))
         {
@@ -458,8 +462,13 @@ void dump1090::processMessages()
         accumulator.append(chunk.data(), static_cast<size_t>(received));
         /* Stamp at recv, not per line: when a blocking FSS send backs this
          * loop up, the later lines of the chunk still get the time their data
-         * actually arrived rather than the time we got around to them. */
-        uint64_t stamp = flight_safety_system::fss_current_timestamp();
+         * actually arrived rather than the time we got around to them.
+         * Monotonic (adsb_time::monotonic_ms), not fss_current_timestamp()
+         * wall time: this stamp feeds only duration math downstream
+         * (freshness/eviction/TSLC), which must not follow an NTP step -- the
+         * wire timestamp is reconstructed from it at send time (see
+         * adsb_report::derive_report_timestamp). */
+        uint64_t stamp = adsb_time::monotonic_ms();
 
         size_t start = 0;
         size_t pos;

@@ -28,8 +28,9 @@ public:
 
     /* Folds a parsed message into the aircraft's accumulated record
      * (creating it on first sight), stamping last_seen from the message's
-     * own receive-time timestamp, and returns a report if the fold produced
-     * one worth sending (see adsb_report::build_report). */
+     * own receive-time timestamp -- adsb_time::monotonic_ms(), not a
+     * wall-clock value -- and returns a report if the fold produced one
+     * worth sending (see adsb_report::build_report). */
     auto fold(const ADSBData &adsb) -> std::optional<adsb_report::position_report>;
 
     /* Removes every aircraft whose last_seen is at least stale_window_ms

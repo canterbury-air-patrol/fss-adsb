@@ -11,10 +11,12 @@
 #include "adsb_record.hpp"
 
 /* One pending report for one aircraft. `received` is the original recv()-time
- * stamp (see dump1090::processMessages), carried through the queue so TSLC
- * can be derived at the actual send attempt (reporting_worker::run) rather
- * than at fold time, when it would already be stale by however long the item
- * waits here. */
+ * stamp (see dump1090::processMessages) -- adsb_time::monotonic_ms(), not a
+ * wall-clock value -- carried through the queue so both TSLC and the
+ * report's wall-clock timestamp can be derived at the actual send attempt
+ * (reporting_worker::run, adsb_report::derive_tslc/derive_report_timestamp)
+ * rather than at fold time, when they would already be stale by however long
+ * the item waits here. */
 struct pending_report {
     adsb_report::position_report report;
     uint64_t received{0};

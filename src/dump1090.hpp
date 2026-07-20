@@ -45,11 +45,12 @@ private:
 public:
     explicit ADSBData(uint32_t t_ICAOAddress) : ICAOAddress(t_ICAOAddress) {};
     [[nodiscard]] auto getICAOAddress() const -> uint32_t { return this->ICAOAddress; };
-    /* t_time is the field's observation timestamp (the recv() stamp of the
-     * message that carried it), used to expire stale accumulated fields --
-     * see adsb_report::report_flags. It defaults to 0 so call sites that
-     * don't care about freshness (most existing tests) don't need to pass
-     * one, matching the ADSBData::test_processMessage precedent. */
+    /* t_time is the field's observation timestamp -- the monotonic recv()
+     * stamp (adsb_time::monotonic_ms) of the message that carried it, not a
+     * wall-clock value -- used to expire stale accumulated fields, see
+     * adsb_report::report_flags. It defaults to 0 so call sites that don't
+     * care about freshness (most existing tests) don't need to pass one,
+     * matching the ADSBData::test_processMessage precedent. */
     void setCallsign(std::string t_callsign, uint64_t t_time = 0)
     {
         this->callsign = std::move(t_callsign);
@@ -113,9 +114,11 @@ public:
     [[nodiscard]] auto getSquawkTime() const -> uint64_t { return this->squawk_time; };
     void setLastSeen(uint64_t t_last_seen) { this->last_seen = t_last_seen; };
     [[nodiscard]] auto getLastSeen() const -> uint64_t { return this->last_seen; };
-    /* Stale if last seen at least window ms ago. The now >= last_seen guard
-     * stops a backwards clock step (NTP) from underflowing the subtraction and
-     * evicting every aircraft. */
+    /* Stale if last seen at least window ms ago. now and last_seen are both
+     * adsb_time::monotonic_ms() stamps, so now < last_seen cannot happen in
+     * production; the now >= last_seen guard stays as cheap overflow-safety
+     * against arbitrary (e.g. test) inputs rather than a real NTP-step
+     * defence. */
     [[nodiscard]] auto isStale(uint64_t now, uint64_t window) const -> bool
     {
         return now >= this->last_seen && (now - this->last_seen) >= window;
