@@ -1,4 +1,5 @@
 #include "dump1090.hpp"
+#include "monotonic_time.hpp"
 
 #include <algorithm>
 #include <cerrno>
@@ -544,12 +545,14 @@ auto dump1090::connect_candidate(struct sockaddr_storage remote) -> int
         pfd.events = POLLOUT;
         /* poll() can be interrupted by a signal (we install SIGINT/SIGTERM
          * handlers); retry on EINTR against the original deadline rather than
-         * treating it as a hard connect failure. */
-        uint64_t deadline = flight_safety_system::fss_current_timestamp() + connect_timeout_ms;
+         * treating it as a hard connect failure. The deadline is measured on
+         * CLOCK_MONOTONIC (adsb_time::monotonic_ms), not wall-clock time, so an
+         * NTP step during the wait cannot extend or skip it. */
+        uint64_t deadline = adsb_time::monotonic_ms() + connect_timeout_ms;
         int poll_rc = 0;
         for (;;)
         {
-            uint64_t now = flight_safety_system::fss_current_timestamp();
+            uint64_t now = adsb_time::monotonic_ms();
             int remaining = now >= deadline ? 0 : static_cast<int>(deadline - now);
             poll_rc = poll(&pfd, 1, remaining);
             if (poll_rc >= 0 || errno != EINTR)
@@ -640,7 +643,10 @@ void dump1090::reconnect()
 {
     if (this->fd == -1)
     {
-        uint64_t ts = flight_safety_system::fss_current_timestamp();
+        /* Monotonic, not wall-clock: an NTP step must not wrap this into an
+         * immediate retry (backward step) or silently skip one (forward
+         * step) -- see last_tried in dump1090.hpp. */
+        uint64_t ts = adsb_time::monotonic_ms();
         uint64_t elapsed_time = ts - this->last_tried;
 
         if (elapsed_time > this->retry_delay)

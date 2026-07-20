@@ -132,6 +132,9 @@ private:
     /* Shared between the main thread (connect/reconnect/disconnect) and the
      * receive thread, which sets it to -1 on disconnect; must be atomic. */
     std::atomic<int> fd{-1};
+    /* Monotonic milliseconds (adsb_time::monotonic_ms), not a
+     * fss_current_timestamp() wall-clock value -- reconnect()'s backoff
+     * measures elapsed time, not wall time. */
     uint64_t last_tried{0};
     void processMessage(const std::string &msg, uint64_t received);
     notify_dump1090_adsb_data_cb adsb_cb{nullptr};
