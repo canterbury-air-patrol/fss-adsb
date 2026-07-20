@@ -19,6 +19,14 @@ FSS_PORT=20202
 
 # TLS credentials: the CA public key and a client keypair signed by the
 # flight-safety-system CA.
+#
+# The service runs as the dedicated fss-adsb system user (see
+# fss-adsb@.service), not root, so these files must be readable by it
+# without being world-readable. Recommended ownership/mode:
+#   chown root:fss-adsb ca.public.pem client.private.pem client.public.pem
+#   chmod 640 ca.public.pem client.private.pem client.public.pem
+# client.private.pem in particular must never be world-readable (mode 640,
+# group fss-adsb) since it is the client's TLS private key.
 CA_PUBLIC_KEY=/etc/fss-adsb/ca.public.pem
 PRIVATE_KEY=/etc/fss-adsb/client.private.pem
 PUBLIC_KEY=/etc/fss-adsb/client.public.pem

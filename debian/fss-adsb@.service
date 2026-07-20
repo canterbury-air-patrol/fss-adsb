@@ -14,5 +14,42 @@ ExecStart=/usr/bin/fss-adsb ${DUMP1090_HOST} ${DUMP1090_PORT} ${FSS_HOST} ${FSS_
 Restart=on-failure
 RestartSec=5
 
+# fss-adsb parses attacker-reachable RF-derived data (unauthenticated ADS-B
+# over dump1090's SBS-1 feed) while holding FSS client TLS private keys, so
+# it is sandboxed down to exactly what it needs: outbound TCP to dump1090
+# and the FSS server, and read access to the environment file above plus
+# the cert paths it names. The dedicated fss-adsb system user (created by
+# debian/postinst) owns neither, so a compromise of the parser gets neither
+# root nor write access to the credentials it uses.
+User=fss-adsb
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+CapabilityBoundingSet=
+# AF_INET/AF_INET6 for the dump1090 and FSS TCP connections; AF_NETLINK
+# because getaddrinfo's AI_ADDRCONFIG hint enumerates configured interfaces
+# over netlink when resolving either host name; AF_UNIX because glibc's
+# resolver talks to nscd/systemd-resolved over a Unix socket and journal
+# logging (stderr/syslog forwarding) goes over one too.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+UMask=0077
+
 [Install]
 WantedBy=multi-user.target

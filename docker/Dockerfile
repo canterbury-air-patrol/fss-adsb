@@ -43,4 +43,14 @@ RUN apt update && apt upgrade -y && apt install -y libfss-client-ssl && rm -rf /
 COPY --from=build /src/src/fss-adsb /usr/local/bin/fss-adsb
 COPY docker/entrypoint.sh /usr/local/bin/fss-adsb-entrypoint.sh
 
+# fss-adsb parses attacker-reachable RF-derived data (unauthenticated ADS-B
+# over dump1090's SBS-1 feed) while holding FSS client TLS private keys, so
+# the container must not run it as root. --system/--no-create-home matches
+# the dedicated user the Debian package creates in debian/postinst. The
+# /certs volume mounted at run time (see entrypoint.sh) must be readable by
+# this user -- e.g. its files owned by (or world/group readable to) the
+# fss-adsb UID/GID, or bind-mounted with matching ownership from the host.
+RUN adduser --system --no-create-home --disabled-login --group fss-adsb
+USER fss-adsb
+
 ENTRYPOINT ["/usr/local/bin/fss-adsb-entrypoint.sh"]
