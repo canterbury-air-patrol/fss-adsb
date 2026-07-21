@@ -282,28 +282,37 @@ static auto sbs1_to_vertrate(const std::string &s) -> std::optional<int16_t>
                    static_cast<long>(INT16_MAX))); // NOLINT(cppcoreguidelines-narrowing-conversions)
 }
 
-/* Parse an unsigned 16-bit field (squawk), rejecting malformed input, and
- * clamp a syntactically valid value above UINT16_MAX (values must not
- * silently wrap via implicit uint16_t truncation). Parsing into an unsigned
- * intermediate type means from_chars itself rejects a leading '-' as
- * malformed, unlike strtoul, which would wrap a negative string into a huge
- * unsigned value that then clamped down to a plausible-looking UINT16_MAX --
- * a negative squawk is invalid input, not a giant unsigned one. */
-static auto sbs1_to_u16(const std::string &s) -> std::optional<uint16_t>
+/* Parse a squawk field, rejecting malformed input. Squawk codes are four
+ * octal digits, so also reject a syntactically valid value that is not a
+ * plausible squawk -- above 7777, or containing a decimal digit 8 or 9 --
+ * rather than clamping it into one, the same call track's [0, 360] range
+ * check (sbs1_to_double) makes for the same reason: no clamped value here is
+ * a plausible squawk the way a clamped altitude is a plausible altitude, so
+ * overflow (unlike altitude/vertrate) is rejected rather than clamped to
+ * UINT16_MAX. Parsing into an unsigned intermediate type means from_chars
+ * itself rejects a leading '-' as malformed, unlike strtoul, which would
+ * wrap a negative string into a huge unsigned value that could pass the
+ * range check below. */
+static auto sbs1_to_squawk(const std::string &s) -> std::optional<uint16_t>
 {
+    constexpr unsigned long squawk_max = 7777;
+    constexpr unsigned long decimal_base = 10;
+    constexpr unsigned long max_octal_digit = 7;
     unsigned long v = 0;
     const char *end = s.c_str() + s.size();
     auto [ptr, ec] = std::from_chars(s.c_str(), end, v);
-    if (ptr != end || (ec != std::errc{} && ec != std::errc::result_out_of_range))
+    if (ptr != end || ec != std::errc{} || v > squawk_max)
     {
         return std::nullopt;
     }
-    if (ec == std::errc::result_out_of_range)
+    for (unsigned long digits = v; digits > 0; digits /= decimal_base)
     {
-        v = std::numeric_limits<unsigned long>::max();
+        if (digits % decimal_base > max_octal_digit)
+        {
+            return std::nullopt;
+        }
     }
-    return static_cast<uint16_t>(
-        std::min(v, static_cast<unsigned long>(UINT16_MAX))); // NOLINT(cppcoreguidelines-narrowing-conversions)
+    return static_cast<uint16_t>(v); // NOLINT(cppcoreguidelines-narrowing-conversions)
 }
 
 void dump1090::processMessage(const std::string &t_msg, uint64_t t_received)
@@ -385,7 +394,7 @@ void dump1090::processMessage(const std::string &t_msg, uint64_t t_received)
                 break;
             }
             case sbs1_id_surveillance_id: {
-                if (auto squawk = sbs1_to_u16(data[sbs1_field_squawk]))
+                if (auto squawk = sbs1_to_squawk(data[sbs1_field_squawk]))
                 {
                     adsb.setSquawk(*squawk, t_received);
                 }

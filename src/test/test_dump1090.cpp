@@ -349,12 +349,11 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 4 huge ground speed is stored; the rep
     // knots_to_cm_per_s clamps to the uint16 wire field (see [units]).
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG type 6 squawk > UINT16_MAX clamps to UINT16_MAX", "[parser][clamp][PATH-E-e01]")
+TEST_CASE_METHOD(ParserFixture, "MSG type 6 squawk > 7777 is rejected, not clamped", "[parser][malformed][PATH-E-e01]")
 {
     feed(makeMsg("6", "A12345", "", "", "", "", "", "", "", "70000"));
     REQUIRE(g_call_count == 1);
-    CHECK(g_captured->validSquawk());
-    CHECK(g_captured->getSquawk() == UINT16_MAX);
+    CHECK_FALSE(g_captured->validSquawk());
 }
 
 TEST_CASE_METHOD(ParserFixture, "MSG type 6 (surveillance id) sets squawk", "[parser][valid][PATH-E-e01]")
@@ -462,13 +461,16 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 4 vert rate too extreme even for long 
     CHECK(g_captured->getVertVel() == INT16_MAX);
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG type 6 garbage or negative squawk leaves squawk unset",
+TEST_CASE_METHOD(ParserFixture, "MSG type 6 garbage, negative, or semantically impossible squawk leaves squawk unset",
                  "[parser][malformed][PATH-E-e01]")
 {
     // strtoul wrapped a negative string into a huge unsigned value that then
     // clamped down to a plausible-looking UINT16_MAX; from_chars into an
-    // unsigned type rejects the leading '-' outright instead.
-    for (const char *squawk : {"garbage", "7700x", "-5"})
+    // unsigned type rejects the leading '-' outright instead. "8000" and
+    // "1780" are syntactically fine but not a real squawk: codes are four
+    // octal digits, so every digit must be 0-7 and the value must be
+    // <= 7777 -- "8000" fails on both counts, "1780" only on the digit.
+    for (const char *squawk : {"garbage", "7700x", "-5", "8000", "1780"})
     {
         g_captured.reset();
         g_call_count = 0;
@@ -479,13 +481,12 @@ TEST_CASE_METHOD(ParserFixture, "MSG type 6 garbage or negative squawk leaves sq
     }
 }
 
-TEST_CASE_METHOD(ParserFixture, "MSG type 6 squawk too large even for unsigned long still clamps to UINT16_MAX",
-                 "[parser][clamp][PATH-E-e01]")
+TEST_CASE_METHOD(ParserFixture, "MSG type 6 squawk too large even for unsigned long is rejected",
+                 "[parser][malformed][PATH-E-e01]")
 {
     feed(makeMsg("6", "A12345", "", "", "", "", "", "", "", "999999999999999999999999999999"));
     REQUIRE(g_call_count == 1);
-    CHECK(g_captured->validSquawk());
-    CHECK(g_captured->getSquawk() == UINT16_MAX);
+    CHECK_FALSE(g_captured->validSquawk());
 }
 
 // ---------------------------------------------------------------------------
