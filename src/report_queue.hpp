@@ -68,7 +68,17 @@ public:
     auto pop() -> std::optional<pending_report>;
     /* Wakes any blocked pop(). Already-queued entries are still drained by
      * subsequent pop() calls -- shutdown does not discard data, it only
-     * stops pop() from blocking forever once the queue is empty. Idempotent. */
+     * stops pop() from blocking forever once the queue is empty. Idempotent.
+     * Pair with clear() (see below) to bound how much of that backlog a
+     * caller actually waits to drain -- see reporting_worker::stop(). */
     void shutdown();
+    /* Discards every still-queued entry without touching `stopped`. Used by
+     * reporting_worker::stop()'s drain deadline (see
+     * todo/bounded-shutdown-drain.md): once the deadline passes, the worker
+     * calls this so the item it is already mid-send on is the only one left
+     * to wait for, instead of the whole backlog. Safe to call from either
+     * thread; a concurrent pop() sees either the pre- or post-clear state,
+     * never a partial one. */
+    void clear();
     [[nodiscard]] auto size() const -> size_t;
 };

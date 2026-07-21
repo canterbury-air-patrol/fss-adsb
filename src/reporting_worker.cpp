@@ -24,11 +24,21 @@ void reporting_worker::run()
                                       0,
                                       /* Type is probably known */
                                       0, t_timestamp);
+
+        /* Checked after the send, not before: this is what lets a single
+         * already-in-flight send finish undisturbed while still cutting the
+         * rest of the backlog short (see stop()'s comment). During normal
+         * operation drain_deadline is UINT64_MAX, so this never trips. */
+        if (adsb_time::monotonic_ms() >= this->drain_deadline.load(std::memory_order_relaxed))
+        {
+            this->queue.clear();
+            break;
+        }
     }
 }
 
-reporting_worker::reporting_worker(aircraft_reporter &t_reporter, report_queue &t_queue)
-    : reporter(t_reporter), queue(t_queue), worker(&reporting_worker::run, this)
+reporting_worker::reporting_worker(aircraft_reporter &t_reporter, report_queue &t_queue, uint64_t t_drain_timeout_ms)
+    : reporter(t_reporter), queue(t_queue), drain_timeout_ms(t_drain_timeout_ms), worker(&reporting_worker::run, this)
 {
 }
 
@@ -39,6 +49,9 @@ reporting_worker::~reporting_worker()
 
 void reporting_worker::stop()
 {
+    /* Set before shutdown() so the deadline is already in place by the time
+     * a blocked pop() wakes up and run() can observe it. */
+    this->drain_deadline.store(adsb_time::monotonic_ms() + this->drain_timeout_ms, std::memory_order_relaxed);
     this->queue.shutdown();
     if (this->worker.joinable())
     {
