@@ -145,6 +145,10 @@ auto main(int argc, char *argv[]) -> int
     while (running)
     {
         sleep(1);
+        /* dumper.reconnect() can block this thread for tens of seconds
+         * (blocking DNS plus per-candidate connect) -- see its declaration
+         * in dump1090.hpp for why that is accepted rather than fixed. It
+         * delays attemptReconnect() and eviction below for exactly as long. */
         dumper.reconnect();
         fss->attemptReconnect();
         if (++seconds_elapsed >= evict_interval_secs)

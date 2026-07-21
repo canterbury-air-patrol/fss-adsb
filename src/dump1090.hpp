@@ -161,6 +161,21 @@ public:
     auto operator=(const dump1090 &) -> dump1090 & = delete;
     auto operator=(dump1090 &&) -> dump1090 & = delete;
     ~dump1090();
+    /* Called once per second from main()'s loop, on the main thread.
+     * Resolution (resolve_candidates(), blocking getaddrinfo -- seconds
+     * against a dead/slow DNS server) and each candidate's connect (up to
+     * connect_timeout_ms) both run inline here, so a multi-address hostname
+     * during an outage can stall this call for tens of seconds. That stalls
+     * the same main-thread loop that also drives fss->attemptReconnect() and
+     * stale-aircraft eviction, coupling the two peers' recovery paths through
+     * one thread -- flagged by the 2026-07-19 review. Recorded as an accepted
+     * tradeoff rather than fixed: the clean shape (connect/reconnect on the
+     * receive thread or a small dedicated connector thread) reshuffles the
+     * fd/thread ownership contract that is currently simple and well-tested,
+     * for a one-instance-per-server deployment where a stalled dump1090
+     * resolve/connect delaying this process's own FSS reconnect and eviction
+     * by tens of seconds has no other tenant to affect -- worth revisiting
+     * only if it bites in practice, not preemptively. */
     void reconnect();
     void processMessages();
     void disconnect();
