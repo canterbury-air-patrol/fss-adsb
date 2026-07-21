@@ -57,6 +57,13 @@ void report_queue::shutdown()
     this->cv.notify_all();
 }
 
+void report_queue::clear()
+{
+    std::unique_lock<std::mutex> lk(this->lock);
+    this->items.clear();
+    this->order.clear();
+}
+
 auto report_queue::size() const -> size_t
 {
     std::unique_lock<std::mutex> lk(this->lock);

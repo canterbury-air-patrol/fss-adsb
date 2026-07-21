@@ -155,10 +155,13 @@ auto main(int argc, char *argv[]) -> int
     }
 
     /* Explicit, in this order: dumper first (stop ingestion, no more
-     * pushes), then worker (drain whatever is left, then stop). Both
-     * destructors repeat this idempotently as a backstop on any other return
-     * path (there is none today, but a future early return must not silently
-     * skip this ordering). */
+     * pushes), then worker (drain whatever is left, then stop). The drain is
+     * bounded (reporting_worker::default_drain_timeout_ms, see
+     * reporting_worker::stop()): a stalled FSS peer gets a few seconds to
+     * send the backlog before the rest is discarded, rather than hanging
+     * systemd's stop until SIGKILL. Both destructors repeat this idempotently
+     * as a backstop on any other return path (there is none today, but a
+     * future early return must not silently skip this ordering). */
     dumper.disconnect();
     worker.stop();
 

@@ -1802,6 +1802,65 @@ TEST_CASE("reporting_worker::stop drains queued reports before stopping", "[work
     CHECK(reporter.call_count() == 10);
 }
 
+TEST_CASE("reporting_worker::stop bounds the drain when the reporter is wedged", "[worker]")
+{
+    // See todo/bounded-shutdown-drain.md: a stalled peer is the only way the
+    // queue fills, and the drain must not then work through the whole
+    // backlog one blocking send at a time.
+    report_queue q(32);
+    fake_reporter reporter;
+    reporter.block_next_call();
+    constexpr uint64_t drain_timeout_ms = 100;
+    reporting_worker worker(reporter, q, drain_timeout_ms);
+
+    // Get the first item popped and stuck inside the (blocked) reportAircraft().
+    q.push(0x0, make_item(0x0));
+    REQUIRE(reporter.wait_entered_block(std::chrono::seconds(2)));
+
+    // Queue up a backlog behind the wedged call.
+    for (uint32_t icao = 1; icao <= 20; icao++)
+    {
+        q.push(icao, make_item(icao));
+    }
+
+    // Release the wedged call from another thread, well after the drain
+    // deadline has elapsed, so stop()'s join() only ever waits on that one
+    // in-flight send -- not the 20-item backlog behind it.
+    std::thread releaser([&reporter] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(4 * drain_timeout_ms));
+        reporter.release_blocked_call();
+    });
+
+    auto start = std::chrono::steady_clock::now();
+    worker.stop();
+    auto elapsed = std::chrono::steady_clock::now() - start;
+    releaser.join();
+
+    // Only the wedged call was ever delivered; the rest was discarded once
+    // the deadline passed, and stop() returned promptly once it was released
+    // rather than after sending the full backlog.
+    CHECK(reporter.call_count() == 1);
+    CHECK(elapsed < std::chrono::milliseconds(20 * drain_timeout_ms));
+}
+
+TEST_CASE("reporting_worker::stop still delivers everything on a healthy drain", "[worker]")
+{
+    // The bounded drain must not cut a healthy (non-blocking) drain short --
+    // only a peer that is still stalled once the deadline passes loses data.
+    report_queue q(32);
+    fake_reporter reporter;
+    constexpr uint64_t drain_timeout_ms = 100;
+    reporting_worker worker(reporter, q, drain_timeout_ms);
+
+    for (uint32_t icao = 1; icao <= 20; icao++)
+    {
+        q.push(icao, make_item(icao));
+    }
+    worker.stop();
+
+    CHECK(reporter.call_count() == 20);
+}
+
 TEST_CASE("reporting_worker::stop is idempotent", "[worker]")
 {
     report_queue q(4);
