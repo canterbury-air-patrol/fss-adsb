@@ -110,7 +110,19 @@ auto resolve_candidates(const std::string &addr, uint16_t port) -> std::vector<s
      * one duplicate entry per socket type. Every usable result is kept, in
      * getaddrinfo's preference order: AI_ADDRCONFIG only filters families the
      * host has *no* address in, so a family that is configured but unroutable
-     * still shows up, and the caller must be able to advance past it. */
+     * still shows up, and the caller must be able to advance past it.
+     *
+     * The 2026-07-19 review flagged that AI_ADDRCONFIG could make "localhost"
+     * unresolvable on a loopback-only host (older glibc excluded loopback
+     * addresses from the "configured families" check) -- worth flagging since
+     * the README's Redundancy section recommends exactly that setup. Verified
+     * not to reproduce: getaddrinfo("localhost", AI_ADDRCONFIG) still returns
+     * both A and AAAA loopback results in an isolated network namespace with
+     * only `lo` present, `lo` both down and up (glibc 2.43). This matches
+     * glibc bug 12377, fixed well before any glibc this package targets
+     * (Debian bookworm ships 2.36) -- loopback addresses have counted as
+     * "configured" regardless of interface state for close to a decade. No
+     * code change needed; recorded here so this isn't re-litigated blind. */
     struct addrinfo hints = {};
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
