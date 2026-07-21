@@ -23,13 +23,18 @@ constexpr auto knots_to_cm_per_s(double knots) -> uint16_t
     return static_cast<uint16_t>(cms + 0.5); // NOLINT(bugprone-incorrect-roundings)
 }
 
-/* Vertical rate: feet/minute -> cm/s (FSS vertical velocity, signed). */
+/* Vertical rate: feet/minute -> cm/s (FSS vertical velocity, signed),
+ * rounded like the other two conversions above. */
 constexpr auto ft_per_min_to_cm_per_s(int16_t ft_per_min) -> int16_t
 {
     constexpr double ftpermin_to_cms = 30.48 / 60.0;
-    double cms = ft_per_min * ftpermin_to_cms;
-    return static_cast<int16_t>(std::clamp(cms, static_cast<double>(std::numeric_limits<int16_t>::min()),
-                                           static_cast<double>(std::numeric_limits<int16_t>::max())));
+    double cms = std::clamp(ft_per_min * ftpermin_to_cms, static_cast<double>(std::numeric_limits<int16_t>::min()),
+                            static_cast<double>(std::numeric_limits<int16_t>::max()));
+    /* The value can be negative here, unlike the two clamps above, so the
+     * +0.5-only trick isn't valid (it would round a negative value toward
+     * zero instead of away from it); add or subtract 0.5 by sign instead --
+     * still constexpr-compatible, which std::lround is not in C++17. */
+    return static_cast<int16_t>(cms >= 0.0 ? cms + 0.5 : cms - 0.5); // NOLINT(bugprone-incorrect-roundings)
 }
 
 /* Heading: degrees -> centidegrees (FSS heading), rounded so the fractional

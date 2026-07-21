@@ -723,6 +723,13 @@ TEST_CASE("feet/minute -> cm/s preserves sign", "[units]")
     CHECK(adsb_units::ft_per_min_to_cm_per_s(1000) == 508);
     // a descent stays negative (regression guard for the old unsigned/x60 bug)
     CHECK(adsb_units::ft_per_min_to_cm_per_s(-1024) == -520);
+    // Fractional cm/s round to nearest, same as knots/degrees above: -64
+    // ft/min * (30.48/60) = -32.512 cm/s, which used to truncate to -32.
+    CHECK(adsb_units::ft_per_min_to_cm_per_s(-64) == -33);
+    // Exact half-way case: -125 ft/min * (30.48/60) = -63.5 cm/s exactly.
+    // The +0.5-only trick the other two conversions use would round this
+    // toward zero (-63); a signed input must round away from zero instead.
+    CHECK(adsb_units::ft_per_min_to_cm_per_s(-125) == -64);
 }
 
 TEST_CASE("degrees -> centidegrees", "[units]")
