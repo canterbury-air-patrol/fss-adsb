@@ -19,10 +19,23 @@ void reporting_worker::run()
         this->reporter.reportAircraft(item->report.position, item->report.altitude, item->report.heading,
                                       item->report.hor_vel, item->report.ver_vel, item->report.icao_address,
                                       item->report.callsign, item->report.squawk, tslc, item->report.flags,
-                                      /* dump1090 reports barometric pressure altitude (QNE/standard datum),
-                                       * not QNH */
+                                      /* Altitude type, and a known limitation. MAVLink's
+                                       * ADSB_ALTITUDE_TYPE offers exactly two values: 0 =
+                                       * PRESSURE_QNH and 1 = GEOMETRIC. dump1090 reports
+                                       * neither -- its altitude is pressure altitude on the
+                                       * standard 1013.25 hPa datum (QNE). 0 is sent as the
+                                       * nearer of the two, since GEOMETRIC would be plainly
+                                       * wrong, but it is not accurate: cap-fmu forwards this
+                                       * straight into ADSB_VEHICLE.altitude_type, so an
+                                       * autopilot reads these reports as QNH-referenced.
+                                       * Below the transition altitude the two datums differ
+                                       * by roughly (QNH - 1013.25) x 27 ft/hPa -- typically
+                                       * 100-300 ft -- which matters because this is a
+                                       * conflict-detection feed. */
                                       0,
-                                      /* Type is probably known */
+                                      /* Emitter type: 0 is ADSB_EMITTER_TYPE_NO_INFO, i.e.
+                                       * not known. The SBS-1 stream carries no emitter
+                                       * category, so there is nothing better to report. */
                                       0, t_timestamp);
 
         /* Checked after the send, not before: this is what lets a single
