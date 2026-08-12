@@ -9,9 +9,23 @@ FROM ${BASE} AS build
 
 RUN apt update && apt install -y lsb-release ca-certificates curl gnupg
 
-# CAP repo: dearmored keyring over HTTPS, matching cap-fmu's own Dockerfile.
-RUN echo "deb https://apt.canterburyairpatrol.org/apt/$(lsb_release -sc)/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/cap.list
-RUN curl -fsSL https://apt.canterburyairpatrol.org/repository.key | gpg --dearmor -o /etc/apt/trusted.gpg.d/cap.gpg
+# CAP repo: dearmored keyring over HTTPS, matching cap-fmu's own Dockerfile,
+# but scoped to this one repository rather than dropped in
+# /etc/apt/trusted.gpg.d. A keyring in trusted.gpg.d is trusted for *every*
+# configured source, so the CAP key would also be an acceptable signer for
+# debian/ubuntu's own suites -- a compromise of that key would be enough to
+# serve a forged libc. signed-by= binds it to the deb line below and nothing
+# else. The keyring is written first: an apt run with a signed-by= pointing
+# at a missing file is a hard error, so the list must never exist without it.
+#
+# /etc/apt/keyrings is not present on every base this targets, hence the
+# install -d; the explicit 0644 is because apt drops to the _apt user for
+# fetches and must still be able to read the keyring (gpg --dearmor's own
+# output mode follows umask and is not guaranteed world-readable).
+RUN install -d -m 0755 /etc/apt/keyrings && \
+    curl -fsSL https://apt.canterburyairpatrol.org/repository.key | gpg --dearmor -o /etc/apt/keyrings/cap.gpg && \
+    chmod 0644 /etc/apt/keyrings/cap.gpg
+RUN echo "deb [signed-by=/etc/apt/keyrings/cap.gpg] https://apt.canterburyairpatrol.org/apt/$(lsb_release -sc)/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/cap.list
 
 # libfss-client-ssl pulls in libfss/libfss-transport/libfss-transport-ssl
 # too (headers ship in the runtime packages, no -dev split). Built from
@@ -32,10 +46,14 @@ FROM ${BASE}
 
 # ca-certificates must be installed from the base repos before the HTTPS
 # CAP repo list (copied from the build stage along with its keyring, so the
-# runtime stage needs no curl/gnupg/lsb-release) becomes usable.
+# runtime stage needs no curl/gnupg/lsb-release) becomes usable. The keyring
+# lands at the same /etc/apt/keyrings path the copied list's signed-by=
+# names -- COPY creates the directory -- so the scoping survives the stage
+# boundary instead of the runtime stage silently reverting to a
+# trusted-for-everything key.
 RUN apt update && apt install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=build /etc/apt/sources.list.d/cap.list /etc/apt/sources.list.d/cap.list
-COPY --from=build /etc/apt/trusted.gpg.d/cap.gpg /etc/apt/trusted.gpg.d/cap.gpg
+COPY --from=build /etc/apt/keyrings/cap.gpg /etc/apt/keyrings/cap.gpg
 # adduser is not preinstalled on every base this Dockerfile targets (present
 # on debian:bookworm, absent on debian:trixie and ubuntu:resolute), but
 # addgroup/adduser below need it -- install it explicitly rather than relying
