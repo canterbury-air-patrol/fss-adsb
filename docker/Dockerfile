@@ -1,7 +1,8 @@
 # The CAP repo lines below key off lsb_release, so any base with a dist
 # published at apt.canterburyairpatrol.org works (debian:bookworm,
-# debian:trixie, ubuntu:resolute). CI builds trixie and resolute; the
-# default stays bookworm for local builds.
+# debian:trixie, ubuntu:resolute). CI builds all three; bookworm stays the
+# default so `docker build` with no --build-arg produces the same image CI
+# publishes as :latest-bookworm.
 ARG BASE=debian:bookworm
 
 # ---- Build stage: toolchain + source tree, produces src/fss-adsb ----------

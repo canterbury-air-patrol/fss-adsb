@@ -38,3 +38,11 @@ reports_html/
 
 # Local working notes
 todo/
+
+# Local Claude Code state: settings.local.json and, more importantly,
+# .claude/worktrees/, where agent worktrees are checked out. Those are whole
+# copies of this repository; committing one would be a mess to undo.
+.claude/
+
+# make dist / make distcheck output
+fss-adsb-*.tar.gz
