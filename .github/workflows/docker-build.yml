@@ -16,13 +16,21 @@ permissions:
 jobs:
   docker:
     runs-on: ubuntu-latest
-    # Same distro pair as flight-safety-system's docker-build.yml. One
-    # parameterized Dockerfile instead of per-distro copies: the only
+    # trixie/resolute are the same distro pair flight-safety-system's
+    # docker-build.yml publishes; bookworm is here because it is the
+    # Dockerfile's own ARG BASE default, i.e. what `docker build docker/`
+    # produces for a developer with no --build-arg. Without it the default
+    # path was the one path CI never exercised, and bookworm is also the
+    # oldest base the tree supports (Catch2 v2 only, still an armhf package
+    # target), so it is the most likely of the three to break first.
+    # One parameterized Dockerfile instead of per-distro copies: the only
     # per-distro difference here is the base image, passed as BASE.
     strategy:
       fail-fast: false
       matrix:
         include:
+          - distro: bookworm
+            base: debian:bookworm
           - distro: trixie
             base: debian:trixie
           - distro: resolute
