@@ -47,7 +47,16 @@ clang_tidy="${CLANG_TIDY:-clang-tidy}"
 printf '%s\n' src/*.cpp \
     | xargs -P "$(nproc)" -I{} "$clang_tidy" --extra-arg=-Wno-unknown-warning-option -p . {} 2>&1 \
     | tee clang-tidy.log
-! grep -q "warning:" clang-tidy.log
+# Spelled as an if, not as `! grep -q ...`. `set -e` explicitly exempts a
+# command whose status is inverted with `!`, so the bare form only ever failed
+# the script while it happened to be the last statement here -- and it silently
+# stopped being one when the version cross-checks below were appended, leaving
+# clang-tidy findings to land unnoticed. An explicit exit does not depend on
+# where in the file it sits.
+if grep -q "warning:" clang-tidy.log; then
+    echo "check-code.sh: clang-tidy reported warnings (see clang-tidy.log)" >&2
+    exit 1
+fi
 
 # configure.ac's FSS_MIN_VERSION is the source of truth for the minimum
 # flight-safety-system version this program requires; debian/control's
