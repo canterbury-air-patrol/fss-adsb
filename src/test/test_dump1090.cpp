@@ -863,6 +863,81 @@ TEST_CASE("update_record keeps a known callsign when the message is all spaces",
     CHECK(record.validCallsign());
 }
 
+TEST_CASE("update_record accepts a callsign at exactly the length limit", "[record][TC-ADS-002]")
+{
+    ADSBData record(0x1);
+    ADSBData msg(0x1);
+    // 8 characters is the full Mode S flight-id field: the boundary is
+    // inclusive, so this is a callsign, not an over-length value.
+    msg.setCallsign("ABCD1234");
+    REQUIRE(std::string("ABCD1234").size() == adsb_report::max_callsign_length);
+    adsb_report::update_record(record, msg);
+
+    CHECK(record.getCallsign() == "ABCD1234");
+    CHECK(record.validCallsign());
+}
+
+TEST_CASE("update_record rejects an over-length callsign, keeping the known one", "[record][TC-ADS-002]")
+{
+    ADSBData record(0x1);
+    record.setCallsign("KNOWN");
+
+    // The parser stores the raw field, and the framing limit lets a single
+    // line reach roughly 4 KB, so an over-length "callsign" reaches here. It
+    // must be rejected outright rather than truncated to 8 characters, which
+    // would fabricate a plausible-looking callsign -- the record keeps what it
+    // already had, same as for a blank or all-padding field.
+    ADSBData msg(0x1);
+    msg.setCallsign(std::string(4000, 'A'));
+    REQUIRE(msg.validCallsign());
+    adsb_report::update_record(record, msg);
+
+    CHECK(record.getCallsign() == "KNOWN");
+    CHECK(record.validCallsign());
+}
+
+TEST_CASE("update_record rejects a callsign one character over the limit", "[record][TC-ADS-002]")
+{
+    ADSBData record(0x1);
+    ADSBData msg(0x1);
+    msg.setCallsign("ABCD12345");
+    adsb_report::update_record(record, msg);
+
+    // Nothing was previously known, so the record stays without a callsign
+    // rather than gaining a truncated one.
+    CHECK_FALSE(record.validCallsign());
+    CHECK(record.getCallsign() == "");
+}
+
+TEST_CASE("update_record accepts a short callsign padded past the length limit", "[record][TC-ADS-002]")
+{
+    ADSBData record(0x1);
+    ADSBData msg(0x1);
+    // Length is judged after trimming: trailing spaces are a wire artifact, so
+    // a short callsign followed by a long run of them is still valid.
+    msg.setCallsign("QFA123" + std::string(4000, ' '));
+    adsb_report::update_record(record, msg);
+
+    CHECK(record.getCallsign() == "QFA123");
+    CHECK(record.validCallsign());
+}
+
+TEST_CASE("an over-length callsign does not reach the built report", "[record][TC-ADS-002]")
+{
+    ADSBData record(0x1);
+    record.setCallsign("QFA123");
+
+    ADSBData msg(0x1);
+    msg.setCallsign(std::string(4000, 'A'));
+    msg.setPosition(Point(-41.0, 174.0));
+    adsb_report::update_record(record, msg);
+    auto report = adsb_report::build_report(record, msg);
+
+    REQUIRE(report.has_value());
+    CHECK(report->callsign == "QFA123");
+    CHECK((report->flags & adsb_report::valid_callsign) != 0);
+}
+
 TEST_CASE("report_flags follows what the record knows", "[record][TC-ADS-002]")
 {
     using namespace adsb_report;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -29,6 +30,34 @@ inline auto trim_trailing_spaces(std::string s) -> std::string
     return s;
 }
 
+/* Mode S flight identification is 8 characters, which is exactly the width of
+ * the fixed, space-padded SBS-1 field it arrives in (see
+ * trim_trailing_spaces), so once the padding is gone anything longer than
+ * this did not come off a conforming wire.
+ *
+ * This is the only field on the wire the parser does not validate: every
+ * numeric field goes through an sbs1_to_* helper, while the callsign is
+ * stored raw, matching how the parser keeps raw data for every field until
+ * update_record/build_report convert it. Nothing upstream bounds it either --
+ * dump1090::processMessages() only discards its accumulator once it exceeds
+ * buffer_length *after* processing the complete lines in it, so a single line,
+ * and therefore a single callsign field, can reach roughly 4 KB first. That
+ * framing limit does bound the transient per-message allocation; what it does
+ * not bound is the record, which persists per aircraft for as long as the
+ * aircraft keeps being heard from, and is what this cap is here for.
+ *
+ * Over-length values are rejected, not truncated. Truncating 4 KB to its
+ * first 8 characters fabricates a plausible-looking callsign out of something
+ * that was never one, and a fabricated identity is worse than a missing one
+ * for the exact-string consumers downstream (cap-fmu's known_aircraft map,
+ * the MAVLink ADSB_VEHICLE.callsign field it populates). Same reasoning that
+ * rejects rather than clamps an impossible squawk (sbs1_to_squawk in
+ * dump1090.cpp): no truncation here yields a plausible callsign the way a
+ * clamped altitude is still a plausible altitude. The record keeps whatever
+ * callsign it already had, exactly as it does for a blank or all-padding
+ * field. */
+constexpr size_t max_callsign_length = 8;
+
 /* Bits of the fss_message_position_report flags word. */
 constexpr uint16_t valid_coords = 1;
 constexpr uint16_t valid_altitude = 2;
@@ -51,8 +80,11 @@ inline void update_record(ADSBData &record, const ADSBData &msg)
 {
     if (msg.validCallsign())
     {
+        /* Length is checked after trimming: the padding is a wire artifact,
+         * so a short callsign followed by a long run of spaces is a valid
+         * callsign, not an over-length one. */
         std::string trimmed = trim_trailing_spaces(msg.getCallsign());
-        if (!trimmed.empty())
+        if (!trimmed.empty() && trimmed.size() <= max_callsign_length)
         {
             record.setCallsign(std::move(trimmed), msg.getCallsignTime());
         }
