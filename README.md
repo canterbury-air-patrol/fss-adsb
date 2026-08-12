@@ -43,8 +43,10 @@ readable by that user (see the ownership/mode notes in
 `fss-adsb.conf.example`).
 
 ### Running under Docker
-Images are published as `canterburyairpatrol/fss-adsb`, tagged per distro
-(e.g. `:latest-trixie`, `:latest-resolute` -- see `docker/Dockerfile` and
+Images are published as `canterburyairpatrol/fss-adsb`, tagged per distro:
+`:latest-bookworm`, `:latest-trixie` and `:latest-resolute` track develop,
+alongside `:<short-sha>-<distro>` for a specific develop build and
+`:<version>-<distro>` for a release (see `docker/Dockerfile` and
 `.github/workflows/docker-build.yml` for the full tag scheme).
 
 The container takes its configuration from the environment rather than
