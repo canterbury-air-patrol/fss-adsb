@@ -154,3 +154,77 @@ jobs:
           --track-fds=yes \
           --error-exitcode=1 \
           src/test_dump1090
+
+  # ─── 6. Catch2 v2 fallback ────────────────────────────────────────────────
+  # Every job above runs on ubuntu-latest, which ships Catch2 v3, so they all
+  # take configure.ac's catch2-with-main branch. Debian bookworm ships only
+  # Catch2 v2 and takes the vendored src/test/catch.hpp + test_main.cpp branch
+  # instead -- and nothing exercised that branch until a bookworm/armhf package
+  # build hit it in Jenkins at release time, which is the worst moment to find
+  # it has rotted against a newer compiler. This job builds and runs the suite
+  # through it on every push.
+  #
+  # The fallback is forced by removing the runner's catch2 package rather than
+  # by pointing PKG_CONFIG_PATH somewhere empty: PKG_CONFIG_PATH is *prepended*
+  # to pkg-config's built-in search path, so it cannot hide a system
+  # catch2-with-main.pc, and PKG_CONFIG_LIBDIR, which can, would also hide the
+  # fss-* modules configure genuinely needs. Removing the package reproduces
+  # what bookworm actually looks like: no v3 pkg-config module at all.
+  #
+  # A job that quietly built against v3 anyway would be worse than no job -- it
+  # would look like coverage -- so the branch taken is asserted three times:
+  # catch2-with-main invisible to pkg-config before ./configure, the generated
+  # src/Makefile carrying the test_main.cpp sources, and an actual test_main
+  # object in the built tree.
+  catch2-v2-fallback:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+    - uses: actions/checkout@v7
+
+    - uses: ./.github/actions/setup-fss
+
+    - name: hide system Catch2 v3
+      run: |
+        sudo apt-get remove -y catch2
+        if pkg-config --exists catch2-with-main; then
+          echo "::error::catch2-with-main is still visible to pkg-config; ./configure would take the v3 branch and this job would not exercise the fallback."
+          exit 1
+        fi
+
+    - name: configure
+      run: ./configure
+
+    # Automake comments out the branch of an AM_CONDITIONAL that was not taken,
+    # so an *uncommented* test_dump1090_SOURCES naming test/test_main.cpp is
+    # proof HAVE_CATCH2_V3 came out false.
+    - name: assert the vendored Catch2 v2 branch was selected
+      run: |
+        if ! grep -qE '^test_dump1090_SOURCES.*test/test_main\.cpp' src/Makefile; then
+          echo "::error::src/Makefile did not select the vendored Catch2 v2 sources; the fallback was not exercised."
+          grep -n 'catch2-with-main' config.log || true
+          grep -n 'test_dump1090_SOURCES' src/Makefile || true
+          exit 1
+        fi
+
+    # test_dump1090 is a check_PROGRAM, so a plain `make` does not build it;
+    # build it explicitly (as the valgrind job does) rather than relying on
+    # `make check` to do it, so the object assertion below has something to
+    # look at. Building fss-adsb itself adds nothing here -- the Catch2 branch
+    # only ever changes the test target -- and job 1 already covers it.
+    - name: build test binary
+      run: make -C src -j$(nproc) test_dump1090
+
+    # Belt and braces on the assertion above: the Makefile can say what it
+    # likes, this checks what the compiler was actually handed. The object name
+    # is globbed because automake prefixes it when per-target flags are in play
+    # (src/test/dump1090-test_main.o as things stand).
+    - name: assert test_main.cpp was compiled
+      run: |
+        if [ -z "$(find src -name '*test_main*.o' -print -quit)" ]; then
+          echo "::error::no test_main object in the built tree; the vendored Catch2 v2 main was not compiled."
+          exit 1
+        fi
+
+    - name: make check (vendored Catch2 v2)
+      run: make check
