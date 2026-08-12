@@ -1313,6 +1313,143 @@ TEST_CASE("aircraft_registry::fold surfaces an expired accumulated field as inva
     CHECK(report->position.getValid());
 }
 
+TEST_CASE("aircraft_registry stays at capacity as new aircraft keep arriving", "[registry]")
+{
+    // Without the bound, fold() creates an entry per distinct ICAO address and
+    // nothing but the 10-minute evict_stale() sweep ever removes one.
+    constexpr size_t capacity = 8;
+    aircraft_registry reg(capacity);
+
+    for (uint32_t address = 1; address <= 100; address++)
+    {
+        ADSBData msg(address);
+        msg.setLastSeen(1000 + address);
+        reg.fold(msg);
+    }
+
+    CHECK(reg.size() == capacity);
+    CHECK(reg.capacity_evictions() == 100 - capacity);
+}
+
+TEST_CASE("aircraft_registry evicts the least-recently-heard aircraft, not the first seen", "[registry]")
+{
+    // The distinction that matters: 0x1 is seen first but keeps being heard
+    // from, while 0x2 is seen later and then goes silent. A first-seen FIFO
+    // (report_queue's policy) would drop the live track; this must drop 0x2.
+    constexpr size_t capacity = 3;
+    aircraft_registry reg(capacity);
+
+    ADSBData first(0x1);
+    first.setLastSeen(1000);
+    reg.fold(first);
+
+    ADSBData quiet(0x2);
+    quiet.setLastSeen(2000);
+    reg.fold(quiet);
+
+    ADSBData third(0x3);
+    third.setLastSeen(3000);
+    reg.fold(third);
+
+    // 0x1 is heard again, most recently of all -- 0x2 is now the oldest.
+    ADSBData first_again(0x1);
+    first_again.setLastSeen(4000);
+    reg.fold(first_again);
+    REQUIRE(reg.size() == capacity);
+
+    ADSBData arrival(0x4);
+    arrival.setLastSeen(5000);
+    reg.fold(arrival);
+
+    CHECK(reg.size() == capacity);
+    CHECK(reg.capacity_evictions() == 1);
+
+    // 0x2 is gone; folding it again re-creates it as a first sighting, which
+    // is only visible as a size change if something else was dropped for it.
+    // Check the survivors directly instead: 0x1, 0x3 and 0x4 must still hold
+    // their accumulated state.
+    ADSBData probe(0x1);
+    probe.setPosition(Point(1.0, 2.0));
+    probe.setLastSeen(5000);
+    auto report = reg.fold(probe);
+    REQUIRE(report.has_value());
+    CHECK(reg.size() == capacity); // 0x1 was still known: nothing evicted
+    CHECK(reg.capacity_evictions() == 1);
+}
+
+TEST_CASE("aircraft_registry evicts nothing when a known aircraft folds again at capacity", "[registry]")
+{
+    // A message for an already-known aircraft updates its record in place, so
+    // however full the registry is, it must never cost another aircraft its
+    // slot -- otherwise a busy tracked aircraft would evict its neighbours.
+    constexpr size_t capacity = 4;
+    aircraft_registry reg(capacity);
+
+    for (uint32_t address = 1; address <= capacity; address++)
+    {
+        ADSBData msg(address);
+        msg.setLastSeen(1000 + address);
+        reg.fold(msg);
+    }
+    REQUIRE(reg.size() == capacity);
+    REQUIRE(reg.capacity_evictions() == 0);
+
+    for (int repeat = 0; repeat < 50; repeat++)
+    {
+        ADSBData msg(0x1);
+        msg.setLastSeen(2000 + static_cast<uint64_t>(repeat));
+        reg.fold(msg);
+    }
+
+    CHECK(reg.size() == capacity);
+    CHECK(reg.capacity_evictions() == 0);
+}
+
+TEST_CASE("aircraft_registry keeps the accumulated record of a surviving aircraft", "[registry]")
+{
+    // Eviction must remove whole records, not corrupt the survivors': the
+    // aircraft that stays keeps everything folded into it before the flood.
+    constexpr size_t capacity = 2;
+    aircraft_registry reg(capacity);
+
+    ADSBData tracked(0x1);
+    tracked.setCallsign("QFA123", 1000);
+    tracked.setAltitude(3000, 1000);
+    tracked.setLastSeen(1000);
+    reg.fold(tracked);
+
+    ADSBData filler(0x2);
+    filler.setLastSeen(500); // older than 0x1, so this is what goes
+    reg.fold(filler);
+
+    ADSBData arrival(0x3);
+    arrival.setLastSeen(2000);
+    reg.fold(arrival);
+    REQUIRE(reg.capacity_evictions() == 1);
+
+    ADSBData position(0x1);
+    position.setPosition(Point(-41.0, 174.0));
+    position.setLastSeen(2000);
+    auto report = reg.fold(position);
+
+    REQUIRE(report.has_value());
+    CHECK(report->callsign == "QFA123");
+    CHECK(report->altitude == 3000);
+}
+
+TEST_CASE("aircraft_registry defaults to a bounded capacity", "[registry]")
+{
+    // main.cpp constructs a plain `aircraft_registry g_aircraft_registry;`, so
+    // the bound has to apply without the caller opting in. 4096 mirrors
+    // main.cpp's report_queue_capacity, which is not reachable from here (main
+    // .cpp is not linked into this binary); if one moves, move the other.
+    CHECK(default_registry_capacity == 4096);
+
+    aircraft_registry reg;
+    CHECK(reg.size() == 0);
+    CHECK(reg.capacity_evictions() == 0);
+}
+
 // ---------------------------------------------------------------------------
 // Signal-driven shutdown — see todo/reporting-and-orchestration-tests.md.
 // sigIntHandler/running were extracted out of main.cpp (which is not linked
