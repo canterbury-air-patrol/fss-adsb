@@ -11,9 +11,11 @@ using Catch::Approx;
 #endif
 
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <optional>
@@ -24,9 +26,11 @@ using Catch::Approx;
 
 #include <arpa/inet.h>
 #include <dirent.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "../adsb_record.hpp"
@@ -1506,6 +1510,135 @@ TEST_CASE("parse_port", "[args]")
     CHECK_FALSE(args::parse_port("30003x")); // trailing garbage
     CHECK_FALSE(args::parse_port("abc"));    // non-numeric
     CHECK_FALSE(args::parse_port("-1"));     // negative
+}
+
+// ---------------------------------------------------------------------------
+// Credential path validation
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// A private scratch directory for the credential cases. mkdtemp() makes it
+// unique and 0700, so the mode bits set on the files inside are the only thing
+// access() has to go on -- no interference from a shared /tmp. RAII because
+// Catch2's REQUIRE throws: a failed assertion must not leave a chmod 000 file
+// behind. Removal works regardless of a file's own mode, since unlink() is
+// authorised by the containing directory, which we own.
+struct TempCredentialDir {
+    std::string path{};
+    std::vector<std::string> files{};
+
+    TempCredentialDir()
+    {
+        const char *tmpdir = getenv("TMPDIR");
+        path = std::string(tmpdir != nullptr ? tmpdir : "/tmp") + "/fss-adsb-cred-XXXXXX";
+        REQUIRE(mkdtemp(path.data()) != nullptr);
+    }
+    TempCredentialDir(const TempCredentialDir &) = delete;
+    TempCredentialDir(TempCredentialDir &&) = delete;
+    auto operator=(const TempCredentialDir &) -> TempCredentialDir & = delete;
+    auto operator=(TempCredentialDir &&) -> TempCredentialDir & = delete;
+    ~TempCredentialDir()
+    {
+        for (const auto &file : files)
+        {
+            unlink(file.c_str());
+        }
+        rmdir(path.c_str());
+    }
+
+    // Create an empty file with an exact mode and return its path. Contents are
+    // irrelevant: access(R_OK) only consults the metadata. chmod() runs after
+    // open() because open()'s mode argument is masked by the process umask,
+    // which would quietly turn a requested 0000 or 0640 into something else.
+    auto make_file(const std::string &name, mode_t mode) -> std::string
+    {
+        std::string full = path + "/" + name;
+        int fd = open(full.c_str(), O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+        REQUIRE(fd >= 0);
+        close(fd);
+        REQUIRE(chmod(full.c_str(), mode) == 0);
+        files.push_back(full);
+        return full;
+    }
+
+    // A path inside the directory that deliberately does not exist.
+    auto missing_path(const std::string &name) const -> std::string { return path + "/" + name; }
+};
+
+} // namespace
+
+TEST_CASE("check_credentials_readable accepts readable files", "[args]")
+{
+    TempCredentialDir dir;
+    // 0640 is the mode debian/fss-adsb.conf.example tells operators to use; as
+    // the owning user we can read it, which is the deployed-and-correct case.
+    std::string ca = dir.make_file("ca.pem", S_IRUSR | S_IWUSR | S_IRGRP);
+    std::string key = dir.make_file("client.key", S_IRUSR | S_IWUSR | S_IRGRP);
+    std::string pub = dir.make_file("client.pem", S_IRUSR | S_IWUSR | S_IRGRP);
+
+    auto errors = args::check_credentials_readable(
+        {{"CA public key", ca.c_str()}, {"client private key", key.c_str()}, {"client public key", pub.c_str()}});
+    CHECK(errors.empty());
+}
+
+TEST_CASE("check_credentials_readable rejects a nonexistent path", "[args]")
+{
+    TempCredentialDir dir;
+    std::string missing = dir.missing_path("absent.pem");
+
+    auto errors = args::check_credentials_readable({{"CA public key", missing.c_str()}});
+    REQUIRE(errors.size() == 1);
+    // The operator has to be able to see which path and which failure, so both
+    // the label and the path are part of the contract, not just the count.
+    CHECK(errors[0].find("CA public key") != std::string::npos);
+    CHECK(errors[0].find(missing) != std::string::npos);
+    CHECK(errors[0].find("errno " + std::to_string(ENOENT)) != std::string::npos);
+}
+
+TEST_CASE("check_credentials_readable rejects an existing but unreadable file", "[args]")
+{
+    // The whole point of checking R_OK rather than existence: the file is
+    // there, stat()s fine, and still cannot be opened. Root bypasses the mode
+    // bits entirely (CAP_DAC_OVERRIDE), so as root there is nothing to observe
+    // -- skip rather than assert something untrue about the code.
+    if (geteuid() == 0)
+    {
+        WARN("running as root: mode bits are bypassed, skipping the unreadable-file case");
+        return;
+    }
+
+    TempCredentialDir dir;
+    std::string unreadable = dir.make_file("locked.key", 0);
+
+    auto errors = args::check_credentials_readable({{"client private key", unreadable.c_str()}});
+    REQUIRE(errors.size() == 1);
+    CHECK(errors[0].find("client private key") != std::string::npos);
+    CHECK(errors[0].find(unreadable) != std::string::npos);
+    CHECK(errors[0].find("errno " + std::to_string(EACCES)) != std::string::npos);
+}
+
+TEST_CASE("check_credentials_readable reports every bad path, not just the first", "[args]")
+{
+    TempCredentialDir dir;
+    std::string missing_ca = dir.missing_path("absent-ca.pem");
+    std::string good_key = dir.make_file("client.key", S_IRUSR | S_IWUSR);
+    std::string missing_pub = dir.missing_path("absent-pub.pem");
+
+    // A first failure must not short-circuit the rest: an operator restarting
+    // three times to discover three broken paths one at a time is the
+    // experience this function exists to avoid.
+    auto errors = args::check_credentials_readable({{"CA public key", missing_ca.c_str()},
+                                                    {"client private key", good_key.c_str()},
+                                                    {"client public key", missing_pub.c_str()}});
+    REQUIRE(errors.size() == 2);
+    // Reported in the order given, so the messages line up with the argv order
+    // the usage line describes.
+    CHECK(errors[0].find(missing_ca) != std::string::npos);
+    CHECK(errors[1].find(missing_pub) != std::string::npos);
+    // The readable one in the middle is not mentioned at all.
+    CHECK(errors[0].find(good_key) == std::string::npos);
+    CHECK(errors[1].find(good_key) == std::string::npos);
 }
 
 // ---------------------------------------------------------------------------

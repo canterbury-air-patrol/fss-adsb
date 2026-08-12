@@ -117,6 +117,22 @@ auto main(int argc, char *argv[]) -> int
         return EXIT_FAILURE;
     }
 
+    /* Check the credential files are readable before handing the paths to the
+     * reporter client, which only stores them and would otherwise retry a
+     * doomed TLS handshake forever without ever exiting. See
+     * args::check_credentials_readable() for why this is a startup sanity
+     * check and not a security one. */
+    auto credential_errors = args::check_credentials_readable(
+        {{"CA public key", argv[5]}, {"client private key", argv[6]}, {"client public key", argv[7]}});
+    if (!credential_errors.empty())
+    {
+        for (const auto &error : credential_errors)
+        {
+            std::cerr << error << "\n";
+        }
+        return EXIT_FAILURE;
+    }
+
     /* Watch out for sigint and systemd's default stop signal */
     signal(SIGINT, sigIntHandler);
     signal(SIGTERM, sigIntHandler);
