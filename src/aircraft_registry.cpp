@@ -3,7 +3,10 @@
 #include <algorithm>
 #include <cassert>
 
-aircraft_registry::aircraft_registry(size_t t_capacity) : capacity(t_capacity)
+/* noexcept: see the declaration for why the global in main.cpp depends on it.
+ * assert() aborts rather than throwing, so it is compatible with the
+ * guarantee. */
+aircraft_registry::aircraft_registry(size_t t_capacity) noexcept : capacity(t_capacity)
 {
     assert(t_capacity >= 1 && "aircraft_registry capacity must be at least 1");
 }

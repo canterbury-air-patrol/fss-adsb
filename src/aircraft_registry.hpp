@@ -44,7 +44,23 @@ private:
      * must hold `lock`; does nothing on an empty map. */
     void evict_least_recently_seen();
 public:
-    explicit aircraft_registry(size_t t_capacity = default_registry_capacity);
+    /* noexcept, and it has to be: g_aircraft_registry in main.cpp is a global
+     * with static storage duration, so a constructor that might throw would
+     * abort before main() is entered, with no way to catch it
+     * (bugprone-throwing-static-initialization). Replacing the previously
+     * defaulted constructor with this one silently made the global throwing
+     * until this was added.
+     *
+     * The claim is true rather than merely asserted: the body only asserts,
+     * and both members are nothrow-default-constructible (verified with
+     * std::is_nothrow_default_constructible_v -- std::mutex's default
+     * constructor is constexpr and noexcept, and so is std::map's with a
+     * std::allocator). That is exactly what report_queue cannot say, which
+     * is why it stays behind a unique_ptr constructed inside main() (see
+     * main.cpp): its FIFO std::deque is not nothrow-default-constructible.
+     * Note the difference is the deque, not the condition_variable, whose
+     * default constructor is noexcept on this implementation. */
+    explicit aircraft_registry(size_t t_capacity = default_registry_capacity) noexcept;
     aircraft_registry(const aircraft_registry &) = delete;
     aircraft_registry(aircraft_registry &&) = delete;
     auto operator=(const aircraft_registry &) -> aircraft_registry & = delete;
