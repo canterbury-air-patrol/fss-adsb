@@ -236,6 +236,19 @@ inline auto build_report(const ADSBData &record, const ADSBData &msg) -> std::op
     report.icao_address = record.getICAOAddress();
     report.callsign = record.getCallsign();
     report.squawk = record.getSquawk();
+    /* Evaluated here, at fold time, and deliberately not deferred to the send
+     * attempt the way derive_tslc and derive_report_timestamp are. Those two
+     * answer "how old is this report now?", which is only knowable when the
+     * send actually happens; the flags answer "what did we know about this
+     * aircraft at the moment of the fix?", which is a property of the fix and
+     * does not change while the report sits in the queue. Re-deriving them at
+     * send time was considered and rejected: it would expire a field against
+     * the send clock, so a report that queued for two minutes would arrive
+     * with its heading and speed bits cleared even though both were fresh
+     * when the position was observed -- describing the queue delay rather
+     * than the contact. A consumer that needs to know how stale the report
+     * is reads tslc, which is exactly the field for it; the flags stay a
+     * faithful snapshot of the fix. */
     report.flags = report_flags(record, msg.getLastSeen());
     return report;
 }
