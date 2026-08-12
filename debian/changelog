@@ -1,15 +1,98 @@
-fss-adsb (1.0.1) UNRELEASED; urgency=medium
+fss-adsb (1.1.0) unstable; urgency=medium
 
+  * dump1090: fix the altitude clamp on 32-bit targets. UINT32_MAX does not
+    fit in a long on armhf, so the clamp bound was -1 and every clamped
+    altitude wrapped to 0xFFFFFFFF.
+  * Measure every duration on CLOCK_MONOTONIC rather than gettimeofday():
+    connect deadlines, reconnect backoff, per-field freshness, aircraft
+    eviction and TSLC. On the RTC-less SBCs these receivers run on, a routine
+    forward NTP step used to expire every accumulated field and evict every
+    aircraft at once. The wire timestamp is reconstructed at send time, so no
+    monotonic value leaks into an FSS message.
+  * dump1090: enable TCP keepalive (120s idle + 20s * 3), bounding detection
+    of a peer that died without RST/FIN to roughly 3 minutes instead of the
+    kernel default of about 2h11m. The receive thread previously stayed
+    blocked in recv() indefinitely, indistinguishable from empty airspace.
+  * dump1090: drop messages whose ICAO address is empty, non-hex, zero or
+    wider than 24 bits, instead of folding them into one phantom aircraft
+    0x000000 that was reported to FSS as a real contact.
+  * dump1090: reject unparseable, non-finite or out-of-range coordinates
+    rather than reporting the aircraft at Null Island; a garbage position no
+    longer discards a usable altitude from the same message.
+  * dump1090: parse altitude, vertical rate and squawk strictly, so garbage
+    such as "1200x" is rejected rather than becoming a valid-looking 0.
+    Syntactically valid out-of-range values still clamp where a clamped value
+    is plausible.
+  * dump1090: reject semantically impossible squawk codes (above 7777, or
+    containing a decimal digit 8 or 9) instead of clamping them into a
+    plausible-looking value.
+  * adsb: reject over-length callsigns rather than storing them. The SBS-1
+    callsign field is 8 characters, but line framing allowed a field of
+    several kilobytes to be accepted and retained per aircraft; it was the
+    only field on the wire with no validation at all.
+  * adsb: bound the aircraft registry at 4096 tracked aircraft, evicting the
+    least-recently-heard when full. It previously grew without limit between
+    the 10-minute eviction sweeps, so a feed emitting distinct addresses
+    could exhaust memory on the armhf targets this package ships to. Reaching
+    capacity is logged.
+  * adsb: trim SBS-1's trailing space padding from callsigns, which broke
+    exact-string consumers downstream.
+  * adsb: expire stale per-field telemetry, so a heading or speed observed
+    minutes ago no longer rides along on every later position report looking
+    as current as one seen just now.
+  * dump1090: preserve the fractional ground speed and track the wire
+    carries, and range-check track to [0, 360].
+  * dump1090: use the altitude carried by MSG,5, MSG,6 and MSG,7, so Mode-S
+    targets without ADS-B Out gain an altitude. MSG,2 (surface position) is
+    handled explicitly: it reports nothing but keeps last_seen fresh.
+  * dump1090: try every getaddrinfo result rather than only the first, so a
+    dual-stack host whose preferred family is unroutable no longer fails
+    forever. Resolution happens fresh on every attempt.
+  * units: round feet/minute to cm/s to nearest, matching the other two
+    conversions.
+  * main: validate the TLS credential paths at startup and exit non-zero if
+    any is unreadable. An unreadable key previously left the process running
+    indefinitely, logging the same error every few seconds, with systemd
+    reporting the unit as healthy and Restart=on-failure never firing.
+  * Decouple dump1090 ingestion from FSS reporting: reporting runs on its own
+    thread fed by a bounded, ICAO-coalescing queue whose push() never blocks,
+    so a stalled FSS peer no longer stalls the next recv(). Positions are
+    reported with their receive time rather than their send time.
+  * reporting_worker: bound the shutdown drain to 5s, so a stalled FSS peer
+    no longer hangs `systemctl stop` until SIGKILL at TimeoutStopSec.
+  * Run as a dedicated unprivileged fss-adsb user (UID/GID 963, pinned
+    identically in debian/postinst and docker/Dockerfile) under a full
+    systemd sandbox, rather than as root: fss-adsb parses attacker-reachable
+    RF-derived data while holding FSS client TLS private keys.
   * debian: ship a templated systemd unit, fss-adsb@.service. The instance
     name selects an environment file /etc/fss-adsb/<instance>.conf, matching
     the one-instance-per-FSS-server deployment model; instances are not
     enabled by default. An example configuration is installed under
     /usr/share/doc/fss-adsb/examples/.
-  * main: add --help/-h and --version.
   * debian: add an extended Description (lintian
     extended-description-is-empty).
+  * main: add --help/-h and --version.
+  * docker: scope the Canterbury Air Patrol apt signing key with signed-by
+    instead of installing it into trusted.gpg.d, where it was an acceptable
+    signer for every configured repository including the distribution's own.
+  * docker: multi-stage build, so the runtime image carries no toolchain;
+    fail fast on a missing environment variable.
+  * Require flight-safety-system >= 1.3.0, enforced by both configure.ac and
+    the packaging. 1.3.0 moved all four libraries .so.3 -> .so.4, so this
+    package has to be rebuilt against it; mixing the two ABIs corrupts object
+    layout at runtime rather than failing to link. It subsumes the earlier
+    >= 1.0.2 floor, which existed for the internally synchronised connection
+    pointer reportAircraft() relies on.
+  * build: support Catch2 v3 via pkg-config, falling back to the vendored v2
+    header where no v3 package exists (Debian bookworm).
+  * ci: publish Docker images for bookworm as well as trixie and resolute;
+    exercise the Catch2 v2 fallback branch, which no job previously reached;
+    and cross-check AC_INIT against debian/changelog.
+  * check-code.sh: actually fail on clang-tidy warnings. `set -e` exempts a
+    command inverted with `!`, so the gate had been reporting findings and
+    exiting 0 since the version cross-checks were appended after it.
 
- -- Scott Parlane <sjp@canterburyairpatrol.org>  Fri, 10 Jul 2026 00:00:00 +0000
+ -- Scott Parlane <sjp@canterburyairpatrol.org>  Wed, 12 Aug 2026 00:00:00 +0000
 
 fss-adsb (1.0.0) unstable; urgency=medium
 

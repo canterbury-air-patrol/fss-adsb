@@ -21,6 +21,19 @@ make
 make install
 ```
 
+If you installed flight-safety-system to a non-standard prefix (a local
+development install rather than the distribution packages), `./configure`
+will not find it and fails with `Package 'fss-client-ssl' not found`. Point
+pkg-config at it:
+```
+./configure PKG_CONFIG_PATH=/path/to/prefix/lib/pkgconfig
+```
+`configure` records this, so plain `make` afterwards works — but a fresh
+clone, a `git worktree`, or `make distcheck` each need it supplied again
+(`make distcheck DISTCHECK_CONFIGURE_FLAGS="PKG_CONFIG_PATH=..."`). The
+build also hardcodes an rpath to that prefix so the binaries run without
+`LD_LIBRARY_PATH`.
+
 ### Running fss-adsb
 You will need a client certificate that is signed by the flight-safety-system CA and a running instance of dump1090.
 
