@@ -75,6 +75,30 @@ void evict_stale_aircraft()
     {
         FSS_LOG_INFO(log_component, "Evicting stale aircraft " << std::uppercase << std::hex << address);
     }
+
+    /* Capacity evictions are counted by the registry rather than logged
+     * where they happen: fold() runs on dump1090's receive thread, and the
+     * only thing that drives the registry to capacity is a flood of distinct
+     * ICAO addresses -- so logging per eviction would flood the journal from
+     * the hot path, in precisely the situation that produced it. Sampling the
+     * counter here instead reports at most one line per sweep, whatever the
+     * eviction rate.
+     *
+     * Worth surfacing at all because reaching capacity is not normal: 4096 is
+     * far above any realistic simultaneous-aircraft count for one receiver
+     * (see default_registry_capacity), so a non-zero delta means either a
+     * misconfigured feed or a dump1090 emitting garbage addresses, and the
+     * registry is now silently dropping real aircraft to stay bounded. */
+    static uint64_t reported_capacity_evictions = 0;
+    uint64_t total_capacity_evictions = g_aircraft_registry.capacity_evictions();
+    if (total_capacity_evictions > reported_capacity_evictions)
+    {
+        FSS_LOG_WARN(log_component, "Aircraft registry at capacity: dropped "
+                                        << (total_capacity_evictions - reported_capacity_evictions)
+                                        << " least-recently-heard aircraft since the last sweep ("
+                                        << total_capacity_evictions << " total)");
+        reported_capacity_evictions = total_capacity_evictions;
+    }
 }
 
 constexpr const char *usage_args =
