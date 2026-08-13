@@ -2,12 +2,12 @@ Source: fss-adsb
 Section: utils
 Priority: optional
 Maintainer: Scott Parlane <sjp@canterburyairpatrol.org>
-Build-Depends: debhelper-compat (= 13), pkg-config, libfss (>= 1.0.2), libfss-transport (>= 1.0.2), libfss-transport-ssl (>= 1.0.2), libfss-client-ssl (>= 1.0.2)
+Build-Depends: debhelper-compat (= 13), pkg-config, libfss (>= 1.3.0), libfss-transport (>= 1.3.0), libfss-transport-ssl (>= 1.3.0), libfss-client-ssl (>= 1.3.0)
 Standards-Version: 4.7.0
 
 Package: fss-adsb
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, adduser, libfss (>= 1.0.2), libfss-transport (>= 1.0.2), libfss-transport-ssl (>= 1.0.2), libfss-client-ssl (>= 1.0.2)
+Depends: ${shlibs:Depends}, ${misc:Depends}, adduser, libfss (>= 1.3.0), libfss-transport (>= 1.3.0), libfss-transport-ssl (>= 1.3.0), libfss-client-ssl (>= 1.3.0)
 Description: ADS-B integration for FSS
  Consumes the SBS-1 BaseStation output of a dump1090 receiver (port 30003)
  and reports the aircraft it hears as position reports to a Flight Safety

@@ -18,12 +18,19 @@ AX_CXX_COMPILE_STDCXX([17],[],[mandatory])
 # position-report message type. Threading is via -pthread in AM_CXXFLAGS.
 #
 # FSS_MIN_VERSION is the single source of truth for the minimum supported
-# flight-safety-system release: fss_reporter_client::reportAircraft()
-# (src/fss-reporter.cpp) relies on connection-pointer synchronization
-# introduced in this version so sendMsgAll() can run concurrently with
-# attemptReconnect(). check-code.sh cross-checks this value against the
-# versioned dependencies in debian/control, so bump both together.
-FSS_MIN_VERSION=1.0.2
+# flight-safety-system release. 1.3.0 moved all four libraries from .so.3 to
+# .so.4, so every consumer has to be rebuilt against it -- and a tree that
+# mixes one side's headers with the other's library corrupts object layout at
+# runtime rather than failing to link, which is not a failure mode worth
+# leaving reachable from a plain ./configure. It is also the only version
+# apt.canterburyairpatrol.org now carries for every suite this is packaged
+# for. The previous 1.0.2 floor existed because
+# fss_reporter_client::reportAircraft() (src/fss-reporter.cpp) relies on the
+# connection-pointer synchronization that release introduced, so sendMsgAll()
+# can run concurrently with attemptReconnect(); that requirement is subsumed.
+# check-code.sh cross-checks this value against the versioned dependencies in
+# debian/control, so bump both together.
+FSS_MIN_VERSION=1.3.0
 PKG_PROG_PKG_CONFIG
 PKG_CHECK_MODULES([FSS_CLIENT_SSL], [fss-client-ssl >= $FSS_MIN_VERSION])
 PKG_CHECK_MODULES([FSS_TRANSPORT], [fss-transport >= $FSS_MIN_VERSION])
